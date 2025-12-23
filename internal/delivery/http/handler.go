@@ -7,6 +7,7 @@ import (
 	"BE-PeriksaKesehatan/pkg/utils"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -64,6 +65,23 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	// Tentukan username: sama persis dengan nama lengkap (hanya di-trim spasi di depan/belakang)
+	username := strings.TrimSpace(req.Nama)
+	if username == "" {
+		utils.BadRequest(c, "Username tidak boleh kosong", nil)
+		return
+	}
+
+	usernameExists, err := h.userRepo.CheckUsernameExists(username)
+	if err != nil {
+		utils.InternalServerError(c, "Gagal memeriksa username", err.Error())
+		return
+	}
+	if usernameExists {
+		utils.BadRequest(c, "Username sudah terdaftar", nil)
+		return
+	}
+
 	// Hash password menggunakan bcrypt
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -74,8 +92,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	// Buat user baru
 	user := &model.User{
 		Nama:     req.Nama,
-		// Karena username tidak diinput user, kita gunakan email sebagai username default
-		Username: req.Email,
+		Username: username,
 		Email:    req.Email,
 		Password: string(hashedPassword),
 	}
@@ -107,7 +124,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// Cari user berdasarkan email atau username
-	user, err := h.userRepo.GetUserByEmailOrUsername(req.Account)
+	user, err := h.userRepo.GetUserByEmailOrUsername(req.Identifier)
 	if err != nil {
 		utils.Unauthorized(c, "Email/Username atau password salah")
 		return

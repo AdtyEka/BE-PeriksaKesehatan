@@ -10,8 +10,8 @@ type RegisterRequest struct {
 
 // LoginRequest untuk menangkap input JSON saat login
 type LoginRequest struct {
-    Account  string `json:"account" binding:"required"` 
-    Password string `json:"password" binding:"required"`
+	Identifier string `json:"identifier" binding:"required"` // bisa email atau username
+	Password   string `json:"password" binding:"required"`
 }
 
 // RegisterResponse untuk mengirim balik data setelah pendaftaran
