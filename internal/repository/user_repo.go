@@ -1,0 +1,161 @@
+package repository
+
+import (
+	"BE-PeriksaKesehatan/internal/model"
+	"errors"
+
+	"gorm.io/gorm"
+)
+
+// UserRepository adalah struct yang menampung koneksi database
+// File ini tidak peduli dari mana koneksi datang, dia hanya tahu "saya punya akses ke database"
+type UserRepository struct {
+	db *gorm.DB
+}
+
+// NewUserRepository membuat instance baru dari UserRepository
+// Menerima koneksi database yang sudah aktif sebagai parameter
+func NewUserRepository(db *gorm.DB) *UserRepository {
+	return &UserRepository{
+		db: db,
+	}
+}
+
+// ==================== OPERASI CREATE (INSERT) ====================
+
+// CreateUser melakukan INSERT data user baru ke database
+func (r *UserRepository) CreateUser(user *model.User) error {
+	result := r.db.Create(user)
+	if result.Error != nil {
+		return result.Error
+	}
+	return nil
+}
+
+// ==================== OPERASI READ (SELECT) ====================
+
+// GetUserByID melakukan SELECT user berdasarkan ID
+func (r *UserRepository) GetUserByID(id uint) (*model.User, error) {
+	var user model.User
+	result := r.db.First(&user, id)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("user tidak ditemukan")
+		}
+		return nil, result.Error
+	}
+	return &user, nil
+}
+
+// GetUserByEmail melakukan SELECT user berdasarkan email
+func (r *UserRepository) GetUserByEmail(email string) (*model.User, error) {
+	var user model.User
+	result := r.db.Where("email = ?", email).First(&user)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("user tidak ditemukan")
+		}
+		return nil, result.Error
+	}
+	return &user, nil
+}
+
+// GetUserByUsername melakukan SELECT user berdasarkan username
+func (r *UserRepository) GetUserByUsername(username string) (*model.User, error) {
+	var user model.User
+	result := r.db.Where("username = ?", username).First(&user)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("user tidak ditemukan")
+		}
+		return nil, result.Error
+	}
+	return &user, nil
+}
+
+// GetUserByEmailOrUsername melakukan SELECT user berdasarkan email ATAU username
+// Berguna untuk login karena bisa menggunakan email atau username
+func (r *UserRepository) GetUserByEmailOrUsername(account string) (*model.User, error) {
+	var user model.User
+	result := r.db.Where("email = ? OR username = ?", account, account).First(&user)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("user tidak ditemukan")
+		}
+		return nil, result.Error
+	}
+	return &user, nil
+}
+
+// GetAllUsers melakukan SELECT semua user dari database
+func (r *UserRepository) GetAllUsers() ([]model.User, error) {
+	var users []model.User
+	result := r.db.Find(&users)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return users, nil
+}
+
+// ==================== OPERASI UPDATE ====================
+
+// UpdateUser melakukan UPDATE data user berdasarkan ID
+func (r *UserRepository) UpdateUser(id uint, user *model.User) error {
+	result := r.db.Model(&model.User{}).Where("id = ?", id).Updates(user)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("user tidak ditemukan")
+	}
+	return nil
+}
+
+// UpdateUserPassword melakukan UPDATE password user berdasarkan ID
+func (r *UserRepository) UpdateUserPassword(id uint, hashedPassword string) error {
+	result := r.db.Model(&model.User{}).Where("id = ?", id).Update("password", hashedPassword)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("user tidak ditemukan")
+	}
+	return nil
+}
+
+// ==================== OPERASI DELETE ====================
+
+// DeleteUser melakukan DELETE user berdasarkan ID
+func (r *UserRepository) DeleteUser(id uint) error {
+	result := r.db.Delete(&model.User{}, id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("user tidak ditemukan")
+	}
+	return nil
+}
+
+// ==================== OPERASI VALIDASI ====================
+
+// CheckEmailExists mengecek apakah email sudah terdaftar
+func (r *UserRepository) CheckEmailExists(email string) (bool, error) {
+	var count int64
+	result := r.db.Model(&model.User{}).Where("email = ?", email).Count(&count)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return count > 0, nil
+}
+
+// CheckUsernameExists mengecek apakah username sudah terdaftar
+func (r *UserRepository) CheckUsernameExists(username string) (bool, error) {
+	var count int64
+	result := r.db.Model(&model.User{}).Where("username = ?", username).Count(&count)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return count > 0, nil
+}
+
