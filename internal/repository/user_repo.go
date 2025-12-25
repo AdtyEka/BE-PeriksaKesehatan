@@ -127,7 +127,7 @@ func (r *UserRepository) UpdateUserPassword(id uint, hashedPassword string) erro
 
 // DeleteUser melakukan DELETE user berdasarkan ID
 func (r *UserRepository) DeleteUser(id uint) error {
-	result := r.db.Delete(&model.User{}, id)
+	result := r.db.Delete(&entity.User{}, id)
 	if result.Error != nil {
 		return result.Error
 	}
