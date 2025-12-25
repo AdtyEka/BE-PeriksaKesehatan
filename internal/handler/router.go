@@ -1,4 +1,4 @@
-package http
+package handler
 
 import (
 	"BE-PeriksaKesehatan/internal/repository"
@@ -15,7 +15,7 @@ func SetupRouter(userRepo *repository.UserRepository) *gin.Engine {
 	authHandler := NewAuthHandler(userRepo)
 
 	// API Routes
-	api := router.Group("/api/v1")
+	api := router.Group("/api")
 	{
 		// Hanya route autentikasi (register & login)
 		auth := api.Group("/auth")

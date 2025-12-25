@@ -2,7 +2,7 @@ package main
 
 import (
 	"BE-PeriksaKesehatan/config"
-	"BE-PeriksaKesehatan/internal/delivery/http"
+	"BE-PeriksaKesehatan/internal/handler"
 	"BE-PeriksaKesehatan/internal/repository"
 	"log"
 )
@@ -22,7 +22,7 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 
 	// 4. Setup router dengan dependency injection
-	router := http.SetupRouter(userRepo)
+	router := handler.SetupRouter(userRepo)
 
 	// 5. Start server
 	port := cfg.Port

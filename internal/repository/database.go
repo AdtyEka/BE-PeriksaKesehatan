@@ -2,7 +2,7 @@ package repository
 
 import (
 	"BE-PeriksaKesehatan/config"
-	"BE-PeriksaKesehatan/internal/model" // Import folder model
+	"BE-PeriksaKesehatan/internal/model/entity"
 	"log"
 
 	"gorm.io/driver/postgres"
@@ -16,7 +16,6 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 	dbURL := cfg.DBURL
 
 	// Membuka koneksi menggunakan driver GORM/Postgres
-	// Di sini terjadi proses "Handshake" atau jabat tangan dengan Server Supabase
 	db, err := gorm.Open(postgres.Open(dbURL), &gorm.Config{})
 	if err != nil {
 		log.Printf("Error: Gagal membuka koneksi ke database: %v", err)
@@ -37,7 +36,7 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 
 	// AutoMigrate
 	err = db.AutoMigrate(
-		&model.User{},
+		&entity.User{},
 	)
 	if err != nil {
 		log.Printf("Warning: Gagal melakukan auto-migrate: %v", err)

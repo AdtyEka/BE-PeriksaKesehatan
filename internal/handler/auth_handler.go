@@ -1,8 +1,10 @@
-package http
+package handler
 
 import (
 	"BE-PeriksaKesehatan/config"
-	"BE-PeriksaKesehatan/internal/model"
+	"BE-PeriksaKesehatan/internal/model/entity"
+	"BE-PeriksaKesehatan/internal/model/dto/request"
+	"BE-PeriksaKesehatan/internal/model/dto/response"
 	"BE-PeriksaKesehatan/internal/repository"
 	"BE-PeriksaKesehatan/pkg/utils"
 	"net/http"
@@ -40,7 +42,7 @@ func NewAuthHandler(userRepo *repository.UserRepository) *AuthHandler {
 
 // Register menangani request pendaftaran user baru
 func (h *AuthHandler) Register(c *gin.Context) {
-	var req model.RegisterRequest
+	var req request.RegisterRequest
 
 	// Bind JSON request ke struct
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -90,7 +92,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	// Buat user baru
-	user := &model.User{
+	user := &entity.User{
 		Nama:     req.Nama,
 		Username: username,
 		Email:    req.Email,
@@ -104,18 +106,18 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	// Response sukses
-	response := model.RegisterResponse{
+	resp := response.RegisterResponse{
 		Message: "Pendaftaran berhasil",
 		Nama:    user.Nama,
 		Email:   user.Email,
 	}
 
-	utils.SuccessResponse(c, http.StatusCreated, response.Message, response)
+	utils.SuccessResponse(c, http.StatusCreated, resp.Message, resp)
 }
 
 // Login menangani request login user
 func (h *AuthHandler) Login(c *gin.Context) {
-	var req model.LoginRequest
+	var req request.LoginRequest
 
 	// Bind JSON request ke struct
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -152,12 +154,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// Response sukses
-	response := model.LoginResponse{
+	resp := response.LoginResponse{
 		Token:    token,
 		Nama:     user.Nama,
 		Username: user.Username,
 		Email:    user.Email,
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "Login berhasil", response)
+	utils.SuccessResponse(c, http.StatusOK, "Login berhasil", resp)
 }
+

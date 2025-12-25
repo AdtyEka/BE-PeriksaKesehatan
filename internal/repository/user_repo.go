@@ -1,7 +1,7 @@
 package repository
 
 import (
-	"BE-PeriksaKesehatan/internal/model"
+	"BE-PeriksaKesehatan/internal/model/entity"
 	"errors"
 
 	"gorm.io/gorm"
@@ -24,7 +24,7 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 // ==================== OPERASI CREATE (INSERT) ====================
 
 // CreateUser melakukan INSERT data user baru ke database
-func (r *UserRepository) CreateUser(user *model.User) error {
+func (r *UserRepository) CreateUser(user *entity.User) error {
 	result := r.db.Create(user)
 	if result.Error != nil {
 		return result.Error
@@ -35,8 +35,8 @@ func (r *UserRepository) CreateUser(user *model.User) error {
 // ==================== OPERASI READ (SELECT) ====================
 
 // GetUserByID melakukan SELECT user berdasarkan ID
-func (r *UserRepository) GetUserByID(id uint) (*model.User, error) {
-	var user model.User
+func (r *UserRepository) GetUserByID(id uint) (*entity.User, error) {
+	var user entity.User
 	result := r.db.First(&user, id)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -48,8 +48,8 @@ func (r *UserRepository) GetUserByID(id uint) (*model.User, error) {
 }
 
 // GetUserByEmail melakukan SELECT user berdasarkan email
-func (r *UserRepository) GetUserByEmail(email string) (*model.User, error) {
-	var user model.User
+func (r *UserRepository) GetUserByEmail(email string) (*entity.User, error) {
+	var user entity.User
 	result := r.db.Where("email = ?", email).First(&user)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -61,8 +61,8 @@ func (r *UserRepository) GetUserByEmail(email string) (*model.User, error) {
 }
 
 // GetUserByUsername melakukan SELECT user berdasarkan username
-func (r *UserRepository) GetUserByUsername(username string) (*model.User, error) {
-	var user model.User
+func (r *UserRepository) GetUserByUsername(username string) (*entity.User, error) {
+	var user entity.User
 	result := r.db.Where("username = ?", username).First(&user)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -75,8 +75,8 @@ func (r *UserRepository) GetUserByUsername(username string) (*model.User, error)
 
 // GetUserByEmailOrUsername melakukan SELECT user berdasarkan email ATAU username
 // Berguna untuk login karena bisa menggunakan email atau username
-func (r *UserRepository) GetUserByEmailOrUsername(account string) (*model.User, error) {
-	var user model.User
+func (r *UserRepository) GetUserByEmailOrUsername(account string) (*entity.User, error) {
+	var user entity.User
 	result := r.db.Where("email = ? OR username = ?", account, account).First(&user)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -88,8 +88,8 @@ func (r *UserRepository) GetUserByEmailOrUsername(account string) (*model.User, 
 }
 
 // GetAllUsers melakukan SELECT semua user dari database
-func (r *UserRepository) GetAllUsers() ([]model.User, error) {
-	var users []model.User
+func (r *UserRepository) GetAllUsers() ([]entity.User, error) {
+	var users []entity.User
 	result := r.db.Find(&users)
 	if result.Error != nil {
 		return nil, result.Error
@@ -100,8 +100,8 @@ func (r *UserRepository) GetAllUsers() ([]model.User, error) {
 // ==================== OPERASI UPDATE ====================
 
 // UpdateUser melakukan UPDATE data user berdasarkan ID
-func (r *UserRepository) UpdateUser(id uint, user *model.User) error {
-	result := r.db.Model(&model.User{}).Where("id = ?", id).Updates(user)
+func (r *UserRepository) UpdateUser(id uint, user *entity.User) error {
+	result := r.db.Model(&entity.User{}).Where("id = ?", id).Updates(user)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -113,7 +113,7 @@ func (r *UserRepository) UpdateUser(id uint, user *model.User) error {
 
 // UpdateUserPassword melakukan UPDATE password user berdasarkan ID
 func (r *UserRepository) UpdateUserPassword(id uint, hashedPassword string) error {
-	result := r.db.Model(&model.User{}).Where("id = ?", id).Update("password", hashedPassword)
+	result := r.db.Model(&entity.User{}).Where("id = ?", id).Update("password", hashedPassword)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -142,7 +142,7 @@ func (r *UserRepository) DeleteUser(id uint) error {
 // CheckEmailExists mengecek apakah email sudah terdaftar
 func (r *UserRepository) CheckEmailExists(email string) (bool, error) {
 	var count int64
-	result := r.db.Model(&model.User{}).Where("email = ?", email).Count(&count)
+	result := r.db.Model(&entity.User{}).Where("email = ?", email).Count(&count)
 	if result.Error != nil {
 		return false, result.Error
 	}
@@ -152,7 +152,7 @@ func (r *UserRepository) CheckEmailExists(email string) (bool, error) {
 // CheckUsernameExists mengecek apakah username sudah terdaftar
 func (r *UserRepository) CheckUsernameExists(username string) (bool, error) {
 	var count int64
-	result := r.db.Model(&model.User{}).Where("username = ?", username).Count(&count)
+	result := r.db.Model(&entity.User{}).Where("username = ?", username).Count(&count)
 	if result.Error != nil {
 		return false, result.Error
 	}
