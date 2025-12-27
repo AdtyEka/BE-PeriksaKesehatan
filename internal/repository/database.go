@@ -37,6 +37,7 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 	// AutoMigrate
 	err = db.AutoMigrate(
 		&entity.User{},
+		&entity.HealthData{},
 	)
 	if err != nil {
 		log.Printf("Warning: Gagal melakukan auto-migrate: %v", err)

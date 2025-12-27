@@ -1,0 +1,163 @@
+package handler
+
+import (
+	"BE-PeriksaKesehatan/config"
+	"BE-PeriksaKesehatan/internal/model/dto/request"
+	"BE-PeriksaKesehatan/internal/service"
+	"BE-PeriksaKesehatan/pkg/utils"
+	"net/http"
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+)
+
+// HealthDataHandler menangani semua request terkait data kesehatan
+type HealthDataHandler struct {
+	healthDataService *service.HealthDataService
+	jwtSecret         string
+}
+
+// NewHealthDataHandler membuat instance baru dari HealthDataHandler
+func NewHealthDataHandler(healthDataService *service.HealthDataService) *HealthDataHandler {
+	// Ambil secret dari environment (sama seperti AuthHandler)
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		// fallback: coba ambil dari config untuk memastikan kalau LoadConfig sudah dijalankan
+		cfg := config.LoadConfig()
+		secret = cfg.JWTSecret
+	}
+
+	return &HealthDataHandler{
+		healthDataService: healthDataService,
+		jwtSecret:         secret,
+	}
+}
+
+// CreateHealthData menangani request input data kesehatan
+func (h *HealthDataHandler) CreateHealthData(c *gin.Context) {
+	var req request.HealthDataRequest
+
+	// Bind JSON request ke struct
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "Data tidak valid", err.Error())
+		return
+	}
+
+	// Ambil user ID dari JWT token
+	userID, err := h.getUserIDFromToken(c)
+	if err != nil {
+		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
+		return
+	}
+
+	// Panggil service untuk membuat data kesehatan
+	resp, err := h.healthDataService.CreateHealthData(userID, &req)
+	if err != nil {
+		// Cek apakah error adalah validasi
+		if err.Error() == "systolic harus berada dalam range 90-180 mmHg" ||
+			err.Error() == "diastolic harus berada dalam range 60-120 mmHg" ||
+			err.Error() == "blood_sugar harus berada dalam range 60-300 mg/dL" ||
+			err.Error() == "weight harus berada dalam range 20-200 kg" ||
+			err.Error() == "heart_rate harus berada dalam range 40-180 bpm" {
+			utils.BadRequest(c, "Validasi gagal", err.Error())
+			return
+		}
+		utils.InternalServerError(c, "Gagal menyimpan data kesehatan", err.Error())
+		return
+	}
+
+	// Response sukses
+	utils.SuccessResponse(c, http.StatusCreated, "Data kesehatan berhasil disimpan", resp)
+}
+
+// GetHealthDataByUserID menangani request untuk mendapatkan riwayat data kesehatan user
+func (h *HealthDataHandler) GetHealthDataByUserID(c *gin.Context) {
+	// Ambil user ID dari JWT token
+	userID, err := h.getUserIDFromToken(c)
+	if err != nil {
+		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
+		return
+	}
+
+	// Panggil service untuk mendapatkan data kesehatan
+	healthDataList, err := h.healthDataService.GetHealthDataByUserID(userID)
+	if err != nil {
+		utils.InternalServerError(c, "Gagal mengambil data kesehatan", err.Error())
+		return
+	}
+
+	// Response sukses
+	utils.SuccessResponse(c, http.StatusOK, "Data kesehatan berhasil diambil", healthDataList)
+}
+
+// getUserIDFromToken mengambil user ID dari JWT token di header Authorization
+func (h *HealthDataHandler) getUserIDFromToken(c *gin.Context) (uint, error) {
+	// Ambil token dari header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		return 0, jwt.ErrSignatureInvalid
+	}
+
+	// Parse token (format: "Bearer <token>")
+	tokenString := authHeader
+	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		tokenString = authHeader[7:]
+	}
+
+	// Parse dan validasi token
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Validasi bahwa signing method adalah HS256 (sama seperti saat login)
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return []byte(h.jwtSecret), nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	if !token.Valid {
+		return 0, jwt.ErrSignatureInvalid
+	}
+
+	// Ambil claims
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return 0, jwt.ErrInvalidKey
+	}
+
+	// Validasi expiry time (jwt library sudah validasi, tapi kita pastikan)
+	if exp, ok := claims["exp"].(float64); ok {
+		if int64(exp) < time.Now().Unix() {
+			return 0, jwt.ErrTokenExpired
+		}
+	}
+
+	// Ambil user ID dari claims
+	sub, ok := claims["sub"]
+	if !ok {
+		return 0, jwt.ErrInvalidKey
+	}
+
+	// Convert ke uint (JWT library mengkonversi angka menjadi float64 saat parsing JSON)
+	userIDFloat, ok := sub.(float64)
+	if !ok {
+		// Coba sebagai string (untuk kompatibilitas)
+		userIDStr, ok := sub.(string)
+		if !ok {
+			return 0, jwt.ErrInvalidKey
+		}
+		userIDUint, err := strconv.ParseUint(userIDStr, 10, 32)
+		if err != nil {
+			return 0, err
+		}
+		return uint(userIDUint), nil
+	}
+
+	return uint(userIDFloat), nil
+}
+

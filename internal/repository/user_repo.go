@@ -159,3 +159,10 @@ func (r *UserRepository) CheckUsernameExists(username string) (bool, error) {
 	return count > 0, nil
 }
 
+// ==================== HELPER METHODS ====================
+
+// GetDB mengembalikan koneksi database untuk digunakan oleh repository lain
+func (r *UserRepository) GetDB() *gorm.DB {
+	return r.db
+}
+
