@@ -5,6 +5,8 @@ import (
 	"BE-PeriksaKesehatan/internal/model/dto/request"
 	"BE-PeriksaKesehatan/internal/service"
 	"BE-PeriksaKesehatan/pkg/utils"
+	"bytes"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -91,6 +93,109 @@ func (h *HealthDataHandler) GetHealthDataByUserID(c *gin.Context) {
 
 	// Response sukses
 	utils.SuccessResponse(c, http.StatusOK, "Data kesehatan berhasil diambil", healthDataList)
+}
+
+// GetHealthHistory menangani request untuk mendapatkan riwayat kesehatan dengan filter
+func (h *HealthDataHandler) GetHealthHistory(c *gin.Context) {
+	// Ambil user ID dari JWT token
+	userID, err := h.getUserIDFromToken(c)
+	if err != nil {
+		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
+		return
+	}
+
+	// Bind query parameters atau JSON body ke struct
+	var req request.HealthHistoryRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		// Jika query binding gagal, coba bind JSON
+		if err := c.ShouldBindJSON(&req); err != nil {
+			// Jika keduanya gagal, gunakan default
+			req.TimeRange = "7days"
+		}
+	}
+
+	// Set default jika kosong
+	if req.TimeRange == "" {
+		req.TimeRange = "7days"
+	}
+
+	// Panggil service untuk mendapatkan riwayat kesehatan
+	resp, err := h.healthDataService.GetHealthHistory(userID, &req)
+	if err != nil {
+		if err.Error() == "start_date dan end_date wajib diisi untuk custom range" {
+			utils.BadRequest(c, "Validasi gagal", err.Error())
+			return
+		}
+		utils.InternalServerError(c, "Gagal mengambil riwayat kesehatan", err.Error())
+		return
+	}
+
+	// Response sukses
+	utils.SuccessResponse(c, http.StatusOK, "Riwayat kesehatan berhasil diambil", resp)
+}
+
+// DownloadHealthReport menangani request untuk mengunduh laporan riwayat kesehatan
+func (h *HealthDataHandler) DownloadHealthReport(c *gin.Context) {
+	// Ambil user ID dari JWT token
+	userID, err := h.getUserIDFromToken(c)
+	if err != nil {
+		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
+		return
+	}
+
+	// Ambil format dari query parameter (default: csv)
+	format := c.DefaultQuery("format", "csv")
+	if format != "csv" && format != "json" {
+		utils.BadRequest(c, "Format tidak valid", "Format harus 'csv' atau 'json'")
+		return
+	}
+
+	// Bind query parameters untuk filter
+	var req request.HealthHistoryRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		// Jika query binding gagal, gunakan default
+		req.TimeRange = "7days"
+	}
+
+	// Set default jika kosong
+	if req.TimeRange == "" {
+		req.TimeRange = "7days"
+	}
+
+	var fileBuffer *bytes.Buffer
+	var filename string
+
+	// Generate laporan berdasarkan format
+	if format == "csv" {
+		fileBuffer, filename, err = h.healthDataService.GenerateReportCSV(userID, &req)
+		if err != nil {
+			if err.Error() == "start_date dan end_date wajib diisi untuk custom range" {
+				utils.BadRequest(c, "Validasi gagal", err.Error())
+				return
+			}
+			utils.InternalServerError(c, "Gagal membuat laporan CSV", err.Error())
+			return
+		}
+		// Set header untuk download CSV
+		c.Header("Content-Type", "text/csv; charset=utf-8")
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	} else {
+		fileBuffer, filename, err = h.healthDataService.GenerateReportJSON(userID, &req)
+		if err != nil {
+			if err.Error() == "start_date dan end_date wajib diisi untuk custom range" {
+				utils.BadRequest(c, "Validasi gagal", err.Error())
+				return
+			}
+			utils.InternalServerError(c, "Gagal membuat laporan JSON", err.Error())
+			return
+		}
+		// Set header untuk download JSON
+		c.Header("Content-Type", "application/json; charset=utf-8")
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	}
+
+	// Kirim file
+	c.Data(http.StatusOK, c.GetHeader("Content-Type"), fileBuffer.Bytes())
 }
 
 // getUserIDFromToken mengambil user ID dari JWT token di header Authorization

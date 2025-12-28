@@ -37,6 +37,8 @@ func SetupRouter(userRepo *repository.UserRepository) *gin.Engine {
 		{
 			health.POST("/data", healthDataHandler.CreateHealthData)
 			health.GET("/data", healthDataHandler.GetHealthDataByUserID)
+			health.GET("/history", healthDataHandler.GetHealthHistory)                    // Endpoint riwayat kesehatan
+			health.GET("/history/download", healthDataHandler.DownloadHealthReport)       // Endpoint download laporan
 		}
 	}
 

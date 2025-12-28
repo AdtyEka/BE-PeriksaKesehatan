@@ -3,6 +3,7 @@ package repository
 import (
 	"BE-PeriksaKesehatan/internal/model/entity"
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -60,6 +61,42 @@ func (r *HealthDataRepository) GetHealthDataByUserID(userID uint) ([]entity.Heal
 func (r *HealthDataRepository) GetAllHealthData() ([]entity.HealthData, error) {
 	var healthDataList []entity.HealthData
 	result := r.db.Order("created_at DESC").Find(&healthDataList)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return healthDataList, nil
+}
+
+// ==================== OPERASI UNTUK RIWAYAT KESEHATAN ====================
+
+// GetHealthDataByUserIDWithFilter melakukan SELECT data kesehatan dengan filter waktu dan metrik
+func (r *HealthDataRepository) GetHealthDataByUserIDWithFilter(userID uint, startDate, endDate time.Time) ([]entity.HealthData, error) {
+	var healthDataList []entity.HealthData
+	query := r.db.Where("user_id = ?", userID).
+		Where("created_at >= ? AND created_at <= ?", startDate, endDate).
+		Order("created_at DESC")
+	
+	result := query.Find(&healthDataList)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return healthDataList, nil
+}
+
+// GetHealthDataForComparison mengambil data periode sebelumnya untuk perbandingan
+// periodDuration adalah durasi periode sebelumnya (misalnya 7 hari, 30 hari)
+func (r *HealthDataRepository) GetHealthDataForComparison(userID uint, startDate, endDate time.Time, periodDuration time.Duration) ([]entity.HealthData, error) {
+	// Hitung periode sebelumnya
+	periodLength := endDate.Sub(startDate)
+	prevEndDate := startDate.Add(-24 * time.Hour) // 1 hari sebelum startDate
+	prevStartDate := prevEndDate.Add(-periodLength)
+	
+	var healthDataList []entity.HealthData
+	query := r.db.Where("user_id = ?", userID).
+		Where("created_at >= ? AND created_at <= ?", prevStartDate, prevEndDate).
+		Order("created_at DESC")
+	
+	result := query.Find(&healthDataList)
 	if result.Error != nil {
 		return nil, result.Error
 	}
