@@ -9,6 +9,7 @@ import (
 	"BE-PeriksaKesehatan/pkg/utils"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 // AuthHandler menangani semua request terkait autentikasi
 type AuthHandler struct {
 	userRepo  *repository.UserRepository
+	authRepo  *repository.AuthRepository
 	jwtSecret string
 }
 
@@ -34,8 +36,12 @@ func NewAuthHandler(userRepo *repository.UserRepository) *AuthHandler {
 		secret = cfg.JWTSecret
 	}
 
+	// Buat AuthRepository untuk operasi blacklist token
+	authRepo := repository.NewAuthRepository(userRepo.GetDB())
+
 	return &AuthHandler{
 		userRepo:  userRepo,
+		authRepo:  authRepo,
 		jwtSecret: secret,
 	}
 }
@@ -116,6 +122,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 }
 
 // Login menangani request login user
+// Error handling:
+// - "user tidak ditemukan" → return 401 Unauthorized
+// - Error database lain → return 500 Internal Server Error
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req request.LoginRequest
 
@@ -128,7 +137,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// Cari user berdasarkan email atau username
 	user, err := h.userRepo.GetUserByEmailOrUsername(req.Identifier)
 	if err != nil {
-		utils.Unauthorized(c, "Email/Username atau password salah")
+		// Bedakan antara "user tidak ditemukan" dengan error database lain
+		if err.Error() == "user tidak ditemukan" {
+			// User tidak ditemukan → return 401
+			utils.Unauthorized(c, "Email/Username atau password salah")
+			return
+		}
+		// Error database lain (prepared statement, connection, dll) → return 500
+		utils.InternalServerError(c, "Gagal memproses login", err.Error())
 		return
 	}
 
@@ -162,5 +178,93 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Login berhasil", resp)
+}
+
+// Logout menangani request logout user
+func (h *AuthHandler) Logout(c *gin.Context) {
+	// Ambil token dari header Authorization
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		// Jika tidak ada token, tetap return sukses (idempotent)
+		utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
+		return
+	}
+
+	// Parse token (format: "Bearer <token>")
+	tokenString := authHeader
+	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		tokenString = authHeader[7:]
+	}
+
+	// Parse token untuk mendapatkan claims (tanpa validasi penuh, karena mungkin sudah expired)
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Validasi bahwa signing method adalah HS256
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return []byte(h.jwtSecret), nil
+	})
+
+	// Jika token tidak valid atau sudah expired, tetap return sukses (idempotent)
+	if err != nil || !token.Valid {
+		utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
+		return
+	}
+
+	// Ambil claims
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
+		return
+	}
+
+	// Cek apakah token sudah di-blacklist sebelumnya
+	isBlacklisted, err := h.authRepo.IsTokenBlacklisted(tokenString)
+	if err != nil {
+		utils.InternalServerError(c, "Gagal memeriksa status token", err.Error())
+		return
+	}
+
+	// Jika sudah di-blacklist, return sukses (idempotent)
+	if isBlacklisted {
+		utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
+		return
+	}
+
+	// Ambil user ID dan expiry time dari claims
+	userIDFloat, ok := claims["sub"].(float64)
+	if !ok {
+		// Coba sebagai string
+		userIDStr, ok := claims["sub"].(string)
+		if !ok {
+			utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
+			return
+		}
+		userIDUint, err := strconv.ParseUint(userIDStr, 10, 32)
+		if err != nil {
+			utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
+			return
+		}
+		userIDFloat = float64(userIDUint)
+	}
+	userID := uint(userIDFloat)
+
+	// Ambil expiry time dari claims
+	var expiresAt time.Time
+	if exp, ok := claims["exp"].(float64); ok {
+		expiresAt = time.Unix(int64(exp), 0)
+	} else {
+		// Jika tidak ada exp, set default 24 jam dari sekarang
+		expiresAt = time.Now().Add(24 * time.Hour)
+	}
+
+	// Tambahkan token ke blacklist
+	if err := h.authRepo.BlacklistToken(tokenString, userID, expiresAt); err != nil {
+		utils.InternalServerError(c, "Gagal melakukan logout", err.Error())
+		return
+	}
+
+	// Response sukses
+	utils.SuccessResponse(c, http.StatusOK, "Logout berhasil", nil)
 }
 

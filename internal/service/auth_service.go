@@ -63,11 +63,19 @@ func (s *AuthService) RegisterUser(nama, username, email, password string) (*ent
 }
 
 // LoginUser melakukan login dan mengembalikan user jika berhasil
+// Error handling:
+// - "user tidak ditemukan" → return error untuk 401
+// - Error database lain → return error asli untuk 500
 func (s *AuthService) LoginUser(identifier, password string) (*entity.User, error) {
 	// Cari user berdasarkan email atau username
 	user, err := s.userRepo.GetUserByEmailOrUsername(identifier)
 	if err != nil {
-		return nil, errors.New("email/username atau password salah")
+		// Jika error adalah "user tidak ditemukan", return error untuk 401
+		if err.Error() == "user tidak ditemukan" {
+			return nil, errors.New("email/username atau password salah")
+		}
+		// Error database lain (prepared statement, connection, dll) → return error asli untuk 500
+		return nil, err
 	}
 
 	// Verifikasi password

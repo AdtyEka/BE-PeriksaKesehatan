@@ -35,6 +35,9 @@ func (r *UserRepository) CreateUser(user *entity.User) error {
 // ==================== OPERASI READ (SELECT) ====================
 
 // GetUserByID melakukan SELECT user berdasarkan ID
+// Error handling:
+// - gorm.ErrRecordNotFound → return error "user tidak ditemukan"
+// - Error database lain → return error asli
 func (r *UserRepository) GetUserByID(id uint) (*entity.User, error) {
 	var user entity.User
 	result := r.db.First(&user, id)
@@ -42,12 +45,16 @@ func (r *UserRepository) GetUserByID(id uint) (*entity.User, error) {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, errors.New("user tidak ditemukan")
 		}
+		// Error database lain → return error asli
 		return nil, result.Error
 	}
 	return &user, nil
 }
 
 // GetUserByEmail melakukan SELECT user berdasarkan email
+// Error handling:
+// - gorm.ErrRecordNotFound → return error "user tidak ditemukan"
+// - Error database lain → return error asli
 func (r *UserRepository) GetUserByEmail(email string) (*entity.User, error) {
 	var user entity.User
 	result := r.db.Where("email = ?", email).First(&user)
@@ -55,12 +62,16 @@ func (r *UserRepository) GetUserByEmail(email string) (*entity.User, error) {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, errors.New("user tidak ditemukan")
 		}
+		// Error database lain → return error asli
 		return nil, result.Error
 	}
 	return &user, nil
 }
 
 // GetUserByUsername melakukan SELECT user berdasarkan username
+// Error handling:
+// - gorm.ErrRecordNotFound → return error "user tidak ditemukan"
+// - Error database lain → return error asli
 func (r *UserRepository) GetUserByUsername(username string) (*entity.User, error) {
 	var user entity.User
 	result := r.db.Where("username = ?", username).First(&user)
@@ -68,6 +79,7 @@ func (r *UserRepository) GetUserByUsername(username string) (*entity.User, error
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, errors.New("user tidak ditemukan")
 		}
+		// Error database lain → return error asli
 		return nil, result.Error
 	}
 	return &user, nil
@@ -75,15 +87,25 @@ func (r *UserRepository) GetUserByUsername(username string) (*entity.User, error
 
 // GetUserByEmailOrUsername melakukan SELECT user berdasarkan email ATAU username
 // Berguna untuk login karena bisa menggunakan email atau username
+// Error handling:
+// - gorm.ErrRecordNotFound → return error "user tidak ditemukan" (untuk 401)
+// - Error database lain → return error asli (untuk 500)
 func (r *UserRepository) GetUserByEmailOrUsername(account string) (*entity.User, error) {
 	var user entity.User
+	
+	// Gunakan query yang lebih stabil dengan context
 	result := r.db.Where("email = ? OR username = ?", account, account).First(&user)
+	
 	if result.Error != nil {
+		// Bedakan antara "user tidak ditemukan" dengan error database lain
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			// User tidak ditemukan → return error khusus untuk 401
 			return nil, errors.New("user tidak ditemukan")
 		}
+		// Error database lain (prepared statement, connection, dll) → return error asli untuk 500
 		return nil, result.Error
 	}
+	
 	return &user, nil
 }
 

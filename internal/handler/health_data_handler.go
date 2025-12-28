@@ -3,6 +3,7 @@ package handler
 import (
 	"BE-PeriksaKesehatan/config"
 	"BE-PeriksaKesehatan/internal/model/dto/request"
+	"BE-PeriksaKesehatan/internal/repository"
 	"BE-PeriksaKesehatan/internal/service"
 	"BE-PeriksaKesehatan/pkg/utils"
 	"bytes"
@@ -19,11 +20,12 @@ import (
 // HealthDataHandler menangani semua request terkait data kesehatan
 type HealthDataHandler struct {
 	healthDataService *service.HealthDataService
+	authRepo          *repository.AuthRepository
 	jwtSecret         string
 }
 
 // NewHealthDataHandler membuat instance baru dari HealthDataHandler
-func NewHealthDataHandler(healthDataService *service.HealthDataService) *HealthDataHandler {
+func NewHealthDataHandler(healthDataService *service.HealthDataService, authRepo *repository.AuthRepository) *HealthDataHandler {
 	// Ambil secret dari environment (sama seperti AuthHandler)
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
@@ -34,6 +36,7 @@ func NewHealthDataHandler(healthDataService *service.HealthDataService) *HealthD
 
 	return &HealthDataHandler{
 		healthDataService: healthDataService,
+		authRepo:          authRepo,
 		jwtSecret:         secret,
 	}
 }
@@ -210,6 +213,15 @@ func (h *HealthDataHandler) getUserIDFromToken(c *gin.Context) (uint, error) {
 	tokenString := authHeader
 	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
 		tokenString = authHeader[7:]
+	}
+
+	// Cek apakah token sudah di-blacklist
+	isBlacklisted, err := h.authRepo.IsTokenBlacklisted(tokenString)
+	if err != nil {
+		return 0, err
+	}
+	if isBlacklisted {
+		return 0, jwt.ErrTokenExpired // Menggunakan ErrTokenExpired untuk menunjukkan token tidak valid
 	}
 
 	// Parse dan validasi token

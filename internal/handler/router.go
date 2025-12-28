@@ -14,22 +14,24 @@ func SetupRouter(userRepo *repository.UserRepository) *gin.Engine {
 
 	// Setup repository
 	healthDataRepo := repository.NewHealthDataRepository(userRepo.GetDB())
+	authRepo := repository.NewAuthRepository(userRepo.GetDB())
 
 	// Setup service
 	healthDataService := service.NewHealthDataService(healthDataRepo)
 
 	// Setup handler
 	authHandler := NewAuthHandler(userRepo)
-	healthDataHandler := NewHealthDataHandler(healthDataService)
+	healthDataHandler := NewHealthDataHandler(healthDataService, authRepo)
 
 	// API Routes
 	api := router.Group("/api")
 	{
-		// Route autentikasi (register & login)
+		// Route autentikasi (register, login & logout)
 		auth := api.Group("/auth")
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
+			auth.POST("/logout", authHandler.Logout)
 		}
 
 		// Route data kesehatan (memerlukan autentikasi)
