@@ -17,17 +17,20 @@ func SetupRouter(userRepo *repository.UserRepository) *gin.Engine {
 	authRepo := repository.NewAuthRepository(userRepo.GetDB())
 	healthAlertRepo := repository.NewHealthAlertRepository(userRepo.GetDB())
 	educationalVideoRepo := repository.NewEducationalVideoRepository(userRepo.GetDB())
+	healthTargetRepo := repository.NewHealthTargetRepository(userRepo.GetDB())
 
 	// Setup service
 	healthDataService := service.NewHealthDataService(healthDataRepo)
 	healthAlertService := service.NewHealthAlertService(healthAlertRepo, healthDataRepo)
 	educationalVideoService := service.NewEducationalVideoService(educationalVideoRepo)
+	profileService := service.NewProfileService(userRepo, healthDataRepo, healthTargetRepo)
 
 	// Setup handler
 	authHandler := NewAuthHandler(userRepo)
 	healthDataHandler := NewHealthDataHandler(healthDataService, authRepo)
 	healthAlertHandler := NewHealthAlertHandler(healthAlertService, authRepo)
 	educationalVideoHandler := NewEducationalVideoHandler(educationalVideoService)
+	profileHandler := NewProfileHandler(profileService, authRepo)
 
 	// API Routes
 	api := router.Group("/api")
@@ -55,6 +58,19 @@ func SetupRouter(userRepo *repository.UserRepository) *gin.Engine {
 		{
 			education.POST("/add-educational-video", educationalVideoHandler.AddEducationalVideo)              // Endpoint tambah video
 			education.GET("/get-educational-videos/:health_condition", educationalVideoHandler.GetEducationalVideos) // Endpoint ambil video
+		}
+
+		// Route profile (memerlukan autentikasi)
+		profile := api.Group("/profile")
+		{
+			profile.GET("", profileHandler.GetProfile)                                    // GET /profile
+			profile.PUT("", profileHandler.UpdateProfile)                                 // PUT /profile
+			profile.GET("/personal-info", profileHandler.GetPersonalInfo)                  // GET /profile/personal-info
+			profile.PUT("/personal-info", profileHandler.UpdatePersonalInfo)              // PUT /profile/personal-info
+			profile.GET("/health-targets", profileHandler.GetHealthTargets)               // GET /profile/health-targets
+			profile.PUT("/health-targets", profileHandler.UpdateHealthTargets)             // PUT /profile/health-targets
+			profile.GET("/settings", profileHandler.GetSettings)                          // GET /profile/settings
+			profile.PUT("/settings", profileHandler.UpdateSettings)                       // PUT /profile/settings
 		}
 	}
 

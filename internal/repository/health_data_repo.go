@@ -103,3 +103,20 @@ func (r *HealthDataRepository) GetHealthDataForComparison(userID uint, startDate
 	return healthDataList, nil
 }
 
+// GetLatestHealthDataByUserID mengambil 1 data kesehatan terbaru berdasarkan UserID
+// Digunakan untuk mengambil berat badan terbaru untuk profile
+func (r *HealthDataRepository) GetLatestHealthDataByUserID(userID uint) (*entity.HealthData, error) {
+	var healthData entity.HealthData
+	result := r.db.Where("user_id = ?", userID).
+		Order("created_at DESC").
+		First(&healthData)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			// Tidak ada data, return nil tanpa error (bukan error, hanya belum ada data)
+			return nil, nil
+		}
+		return nil, result.Error
+	}
+	return &healthData, nil
+}
+

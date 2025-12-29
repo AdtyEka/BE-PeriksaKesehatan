@@ -169,6 +169,51 @@ func (r *UserRepository) UpdateUserPassword(id uint, hashedPassword string) erro
 	return nil
 }
 
+// UpdateUserProfile melakukan UPDATE partial profil user (photo_url, height, nama)
+func (r *UserRepository) UpdateUserProfile(id uint, updates map[string]interface{}) error {
+	if len(updates) == 0 {
+		return errors.New("tidak ada data untuk diupdate")
+	}
+	result := r.db.Model(&entity.User{}).Where("id = ?", id).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("user tidak ditemukan")
+	}
+	return nil
+}
+
+// UpdateUserPersonalInfo melakukan UPDATE informasi pribadi user (nama, birth_date, phone, address)
+func (r *UserRepository) UpdateUserPersonalInfo(id uint, updates map[string]interface{}) error {
+	if len(updates) == 0 {
+		return errors.New("tidak ada data untuk diupdate")
+	}
+	result := r.db.Model(&entity.User{}).Where("id = ?", id).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("user tidak ditemukan")
+	}
+	return nil
+}
+
+// UpdateUserSettings melakukan UPDATE pengaturan aplikasi user (notification_enabled, language)
+func (r *UserRepository) UpdateUserSettings(id uint, updates map[string]interface{}) error {
+	if len(updates) == 0 {
+		return errors.New("tidak ada data untuk diupdate")
+	}
+	result := r.db.Model(&entity.User{}).Where("id = ?", id).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("user tidak ditemukan")
+	}
+	return nil
+}
+
 // ==================== OPERASI DELETE ====================
 
 // DeleteUser melakukan DELETE user berdasarkan ID
