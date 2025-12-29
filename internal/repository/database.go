@@ -76,6 +76,8 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 		&entity.User{},
 		&entity.HealthData{},
 		&entity.BlacklistedToken{},
+		&entity.HealthAlert{},
+		&entity.EducationalVideo{},
 	)
 	if err != nil {
 		log.Printf("Warning: Gagal melakukan auto-migrate: %v", err)
