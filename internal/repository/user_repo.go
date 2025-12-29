@@ -25,6 +25,14 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 
 // CreateUser melakukan INSERT data user baru ke database
 func (r *UserRepository) CreateUser(user *entity.User) error {
+	// Validasi input dasar
+	if user == nil {
+		return errors.New("user tidak boleh nil")
+	}
+	if user.Email == "" || user.Username == "" || user.Password == "" {
+		return errors.New("email, username, dan password harus diisi")
+	}
+
 	result := r.db.Create(user)
 	if result.Error != nil {
 		return result.Error
@@ -39,6 +47,10 @@ func (r *UserRepository) CreateUser(user *entity.User) error {
 // - gorm.ErrRecordNotFound → return error "user tidak ditemukan"
 // - Error database lain → return error asli
 func (r *UserRepository) GetUserByID(id uint) (*entity.User, error) {
+	if id == 0 {
+		return nil, errors.New("ID tidak valid")
+	}
+
 	var user entity.User
 	result := r.db.First(&user, id)
 	if result.Error != nil {
@@ -56,6 +68,10 @@ func (r *UserRepository) GetUserByID(id uint) (*entity.User, error) {
 // - gorm.ErrRecordNotFound → return error "user tidak ditemukan"
 // - Error database lain → return error asli
 func (r *UserRepository) GetUserByEmail(email string) (*entity.User, error) {
+	if email == "" {
+		return nil, errors.New("email tidak boleh kosong")
+	}
+
 	var user entity.User
 	result := r.db.Where("email = ?", email).First(&user)
 	if result.Error != nil {
@@ -73,6 +89,10 @@ func (r *UserRepository) GetUserByEmail(email string) (*entity.User, error) {
 // - gorm.ErrRecordNotFound → return error "user tidak ditemukan"
 // - Error database lain → return error asli
 func (r *UserRepository) GetUserByUsername(username string) (*entity.User, error) {
+	if username == "" {
+		return nil, errors.New("username tidak boleh kosong")
+	}
+
 	var user entity.User
 	result := r.db.Where("username = ?", username).First(&user)
 	if result.Error != nil {
@@ -91,6 +111,10 @@ func (r *UserRepository) GetUserByUsername(username string) (*entity.User, error
 // - gorm.ErrRecordNotFound → return error "user tidak ditemukan" (untuk 401)
 // - Error database lain → return error asli (untuk 500)
 func (r *UserRepository) GetUserByEmailOrUsername(account string) (*entity.User, error) {
+	if account == "" {
+		return nil, errors.New("identifier tidak boleh kosong")
+	}
+
 	var user entity.User
 	
 	// Gunakan query yang lebih stabil dengan context

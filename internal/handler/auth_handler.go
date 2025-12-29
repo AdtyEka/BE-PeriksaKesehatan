@@ -8,7 +8,6 @@ import (
 	"BE-PeriksaKesehatan/internal/repository"
 	"BE-PeriksaKesehatan/pkg/utils"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -27,14 +26,9 @@ type AuthHandler struct {
 
 // NewAuthHandler membuat instance baru dari AuthHandler
 func NewAuthHandler(userRepo *repository.UserRepository) *AuthHandler {
-	// Ambil secret dari environment (langsung) agar handler tidak perlu bergantung pada struct config
-	// Jika suatu saat ingin lebih rapi, bisa diubah ke dependency injection dari main.
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		// fallback: coba ambil dari config untuk memastikan kalau LoadConfig sudah dijalankan
-		cfg := config.LoadConfig()
-		secret = cfg.JWTSecret
-	}
+	// Ambil secret dari config (sudah divalidasi di main.go)
+	cfg := config.LoadConfig()
+	secret := cfg.JWTSecret
 
 	// Buat AuthRepository untuk operasi blacklist token
 	authRepo := repository.NewAuthRepository(userRepo.GetDB())
@@ -180,25 +174,66 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "Login berhasil", resp)
 }
 
-// Logout menangani request logout user
-func (h *AuthHandler) Logout(c *gin.Context) {
-	// Ambil token dari header Authorization
-	authHeader := c.GetHeader("Authorization")
+// extractTokenFromHeader mengambil token dari header Authorization
+// Mengembalikan token string dan true jika berhasil, false jika tidak ada token
+func extractTokenFromHeader(authHeader string) (string, bool) {
 	if authHeader == "" {
-		// Jika tidak ada token, tetap return sukses (idempotent)
+		return "", false
+	}
+
+	// Parse token (format: "Bearer <token>")
+	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		return authHeader[7:], true
+	}
+	return authHeader, true
+}
+
+// extractUserIDFromClaims mengambil user ID dari JWT claims dengan type assertion yang aman
+func extractUserIDFromClaims(claims jwt.MapClaims) (uint, bool) {
+	sub, ok := claims["sub"]
+	if !ok {
+		return 0, false
+	}
+
+	// Coba sebagai float64 (format standar JWT untuk angka)
+	if userIDFloat, ok := sub.(float64); ok {
+		return uint(userIDFloat), true
+	}
+
+	// Coba sebagai string (untuk kompatibilitas)
+	if userIDStr, ok := sub.(string); ok {
+		userIDUint, err := strconv.ParseUint(userIDStr, 10, 32)
+		if err != nil {
+			return 0, false
+		}
+		return uint(userIDUint), true
+	}
+
+	return 0, false
+}
+
+// extractExpiryFromClaims mengambil waktu kadaluarsa dari JWT claims
+func extractExpiryFromClaims(claims jwt.MapClaims) time.Time {
+	if exp, ok := claims["exp"].(float64); ok {
+		return time.Unix(int64(exp), 0)
+	}
+	// Fallback: default 24 jam dari sekarang
+	return time.Now().Add(24 * time.Hour)
+}
+
+// Logout menangani request logout user
+// Method ini idempotent - selalu return sukses meskipun token tidak valid atau sudah di-blacklist
+func (h *AuthHandler) Logout(c *gin.Context) {
+	// Ambil token dari header
+	authHeader := c.GetHeader("Authorization")
+	tokenString, hasToken := extractTokenFromHeader(authHeader)
+	if !hasToken {
 		utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
 		return
 	}
 
-	// Parse token (format: "Bearer <token>")
-	tokenString := authHeader
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		tokenString = authHeader[7:]
-	}
-
 	// Parse token untuk mendapatkan claims (tanpa validasi penuh, karena mungkin sudah expired)
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// Validasi bahwa signing method adalah HS256
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrSignatureInvalid
 		}
@@ -224,39 +259,19 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		utils.InternalServerError(c, "Gagal memeriksa status token", err.Error())
 		return
 	}
-
-	// Jika sudah di-blacklist, return sukses (idempotent)
 	if isBlacklisted {
 		utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
 		return
 	}
 
 	// Ambil user ID dan expiry time dari claims
-	userIDFloat, ok := claims["sub"].(float64)
+	userID, ok := extractUserIDFromClaims(claims)
 	if !ok {
-		// Coba sebagai string
-		userIDStr, ok := claims["sub"].(string)
-		if !ok {
-			utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
-			return
-		}
-		userIDUint, err := strconv.ParseUint(userIDStr, 10, 32)
-		if err != nil {
-			utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
-			return
-		}
-		userIDFloat = float64(userIDUint)
+		utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
+		return
 	}
-	userID := uint(userIDFloat)
 
-	// Ambil expiry time dari claims
-	var expiresAt time.Time
-	if exp, ok := claims["exp"].(float64); ok {
-		expiresAt = time.Unix(int64(exp), 0)
-	} else {
-		// Jika tidak ada exp, set default 24 jam dari sekarang
-		expiresAt = time.Now().Add(24 * time.Hour)
-	}
+	expiresAt := extractExpiryFromClaims(claims)
 
 	// Tambahkan token ke blacklist
 	if err := h.authRepo.BlacklistToken(tokenString, userID, expiresAt); err != nil {
@@ -264,7 +279,6 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		return
 	}
 
-	// Response sukses
 	utils.SuccessResponse(c, http.StatusOK, "Logout berhasil", nil)
 }
 

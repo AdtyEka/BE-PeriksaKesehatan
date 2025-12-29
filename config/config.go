@@ -37,7 +37,7 @@ func LoadConfig() *Config {
 		log.Fatal("Fatal: DATABASE_URL tidak ditemukan di .env atau environment variable")
 	}
 
-	// 4. Validasi kritikal: Jika JWT_SECRET kosong, aplikasi harus berhenti
+	// 5. Validasi kritikal: Jika JWT_SECRET kosong, aplikasi harus berhenti
 	if jwtSecret == "" {
 		log.Fatal("Fatal: JWT_SECRET tidak ditemukan di .env atau environment variable")
 	}

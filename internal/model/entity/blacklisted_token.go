@@ -12,3 +12,8 @@ type BlacklistedToken struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// TableName mengembalikan nama tabel untuk GORM
+func (BlacklistedToken) TableName() string {
+	return "blacklisted_tokens"
+}
+

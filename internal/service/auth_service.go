@@ -22,6 +22,14 @@ func NewAuthService(userRepo *repository.UserRepository) *AuthService {
 
 // RegisterUser melakukan pendaftaran user baru
 func (s *AuthService) RegisterUser(nama, username, email, password string) (*entity.User, error) {
+	// Validasi input dasar
+	if nama == "" || username == "" || email == "" || password == "" {
+		return nil, errors.New("semua field harus diisi")
+	}
+	if len(password) < 6 {
+		return nil, errors.New("password minimal 6 karakter")
+	}
+
 	// Validasi: Cek apakah email sudah terdaftar
 	emailExists, err := s.userRepo.CheckEmailExists(email)
 	if err != nil {
@@ -67,6 +75,11 @@ func (s *AuthService) RegisterUser(nama, username, email, password string) (*ent
 // - "user tidak ditemukan" → return error untuk 401
 // - Error database lain → return error asli untuk 500
 func (s *AuthService) LoginUser(identifier, password string) (*entity.User, error) {
+	// Validasi input
+	if identifier == "" || password == "" {
+		return nil, errors.New("identifier dan password harus diisi")
+	}
+
 	// Cari user berdasarkan email atau username
 	user, err := s.userRepo.GetUserByEmailOrUsername(identifier)
 	if err != nil {
