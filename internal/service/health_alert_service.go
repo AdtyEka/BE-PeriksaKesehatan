@@ -11,13 +11,11 @@ import (
 	"time"
 )
 
-// HealthAlertService menangani business logic untuk health alerts
 type HealthAlertService struct {
 	healthAlertRepo *repository.HealthAlertRepository
 	healthDataRepo  *repository.HealthDataRepository
 }
 
-// NewHealthAlertService membuat instance baru dari HealthAlertService
 func NewHealthAlertService(healthAlertRepo *repository.HealthAlertRepository, healthDataRepo *repository.HealthDataRepository) *HealthAlertService {
 	return &HealthAlertService{
 		healthAlertRepo: healthAlertRepo,
@@ -25,28 +23,22 @@ func NewHealthAlertService(healthAlertRepo *repository.HealthAlertRepository, he
 	}
 }
 
-// CheckHealthAlerts memeriksa data kesehatan dan menghasilkan alert jika diperlukan
 func (s *HealthAlertService) CheckHealthAlerts(userID uint, req *request.HealthAlertRequest) (*response.CheckHealthAlertsResponse, error) {
-	// Validasi data
 	if err := s.validateHealthAlertData(req); err != nil {
 		return nil, err
 	}
 
 	var alerts []response.HealthAlertResponse
 
-	// 1. Pemeriksaan Tekanan Darah
 	if req.Systolic > 140 || req.Diastolic > 90 {
 		alert := s.createBloodPressureAlert(req)
 		alerts = append(alerts, alert)
 		
-		// Simpan ke database
 		if err := s.saveAlertToDB(userID, alert, req.RecordedAt); err != nil {
-			// Log error tapi jangan gagalkan response
 			fmt.Printf("Error menyimpan alert tekanan darah: %v\n", err)
 		}
 	}
 
-	// 2. Pemeriksaan Gula Darah
 	if req.BloodSugar < 70 {
 		alert := s.createLowBloodSugarAlert(req)
 		alerts = append(alerts, alert)
@@ -63,10 +55,8 @@ func (s *HealthAlertService) CheckHealthAlerts(userID uint, req *request.HealthA
 		}
 	}
 
-	// 3. Pemeriksaan Penurunan Berat Badan
 	weightAlert, err := s.checkWeightLoss(userID, req.Weight, req.RecordedAt)
 	if err != nil {
-		// Log error tapi jangan gagalkan response
 		fmt.Printf("Error memeriksa penurunan berat badan: %v\n", err)
 	} else if weightAlert != nil {
 		alerts = append(alerts, *weightAlert)
@@ -81,9 +71,7 @@ func (s *HealthAlertService) CheckHealthAlerts(userID uint, req *request.HealthA
 	}, nil
 }
 
-// validateHealthAlertData melakukan validasi data kesehatan
 func (s *HealthAlertService) validateHealthAlertData(req *request.HealthAlertRequest) error {
-	// Validasi nilai numerik
 	if req.Systolic <= 0 || req.Systolic > 300 {
 		return errors.New("systolic harus valid (1-300 mmHg)")
 	}
@@ -99,7 +87,6 @@ func (s *HealthAlertService) validateHealthAlertData(req *request.HealthAlertReq
 	return nil
 }
 
-// createBloodPressureAlert membuat alert untuk tekanan darah tinggi
 func (s *HealthAlertService) createBloodPressureAlert(req *request.HealthAlertRequest) response.HealthAlertResponse {
 	value := fmt.Sprintf("%d / %d mmHg", req.Systolic, req.Diastolic)
 	message := fmt.Sprintf("Tekanan Darah Anda %s — segera konsultasi dengan dokter.", value)
@@ -121,7 +108,6 @@ func (s *HealthAlertService) createBloodPressureAlert(req *request.HealthAlertRe
 	}
 }
 
-// createLowBloodSugarAlert membuat alert untuk gula darah rendah
 func (s *HealthAlertService) createLowBloodSugarAlert(req *request.HealthAlertRequest) response.HealthAlertResponse {
 	value := fmt.Sprintf("%d mg/dL", req.BloodSugar)
 	message := fmt.Sprintf("Gula Darah Anda %s — kondisi ini memerlukan perhatian segera.", value)
@@ -143,7 +129,6 @@ func (s *HealthAlertService) createLowBloodSugarAlert(req *request.HealthAlertRe
 	}
 }
 
-// createHighBloodSugarAlert membuat alert untuk gula darah tinggi
 func (s *HealthAlertService) createHighBloodSugarAlert(req *request.HealthAlertRequest) response.HealthAlertResponse {
 	value := fmt.Sprintf("%d mg/dL", req.BloodSugar)
 	message := fmt.Sprintf("Gula Darah Anda %s — perhatikan pola makan dan aktivitas fisik.", value)
@@ -166,31 +151,37 @@ func (s *HealthAlertService) createHighBloodSugarAlert(req *request.HealthAlertR
 	}
 }
 
-// checkWeightLoss memeriksa apakah terjadi penurunan berat badan signifikan
 func (s *HealthAlertService) checkWeightLoss(userID uint, currentWeight float64, recordedAt time.Time) (*response.HealthAlertResponse, error) {
-	// Ambil data berat badan sebelumnya (7 hari terakhir)
 	beforeTime := recordedAt.Add(-24 * time.Hour)
 	recentData, err := s.healthAlertRepo.GetRecentWeightData(userID, beforeTime, 5)
 	if err != nil {
 		return nil, err
 	}
 
-	// Jika tidak ada data sebelumnya, tidak bisa menentukan penurunan
 	if len(recentData) == 0 {
 		return nil, nil
 	}
 
-	// Hitung rata-rata berat badan sebelumnya
 	var sumWeight float64
+	var validCount int
 	for _, data := range recentData {
-		sumWeight += data.Weight
+		if data.Weight != nil {
+			sumWeight += *data.Weight
+			validCount++
+		}
 	}
-	avgPreviousWeight := sumWeight / float64(len(recentData))
-
-	// Hitung persentase penurunan
+	
+	if validCount == 0 {
+		return nil, nil
+	}
+	
+	avgPreviousWeight := sumWeight / float64(validCount)
+	if avgPreviousWeight == 0 {
+		return nil, nil
+	}
+	
 	weightLossPercent := ((avgPreviousWeight - currentWeight) / avgPreviousWeight) * 100
 
-	// Jika penurunan lebih dari 5% dalam waktu singkat, buat alert
 	if weightLossPercent > 5.0 {
 		value := fmt.Sprintf("%.2f kg (dari %.2f kg)", currentWeight, avgPreviousWeight)
 		message := fmt.Sprintf("Terjadi penurunan berat badan signifikan (%.2f%%) dalam waktu singkat — perhatikan kondisi kesehatan Anda.", weightLossPercent)
@@ -215,9 +206,7 @@ func (s *HealthAlertService) checkWeightLoss(userID uint, currentWeight float64,
 	return nil, nil
 }
 
-// saveAlertToDB menyimpan alert ke database
 func (s *HealthAlertService) saveAlertToDB(userID uint, alert response.HealthAlertResponse, recordedAt time.Time) error {
-	// Convert recommendations ke JSON string
 	recommendationsJSON, err := json.Marshal(alert.Recommendations)
 	if err != nil {
 		return err

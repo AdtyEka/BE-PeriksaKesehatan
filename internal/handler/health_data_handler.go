@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -61,16 +62,17 @@ func (h *HealthDataHandler) CreateHealthData(c *gin.Context) {
 	// Panggil service untuk membuat data kesehatan
 	resp, err := h.healthDataService.CreateHealthData(userID, &req)
 	if err != nil {
-		// Cek apakah error adalah validasi
-		if err.Error() == "systolic harus berada dalam range 90-180 mmHg" ||
-			err.Error() == "diastolic harus berada dalam range 60-120 mmHg" ||
-			err.Error() == "blood_sugar harus berada dalam range 60-300 mg/dL" ||
-			err.Error() == "weight harus berada dalam range 20-200 kg" ||
-			err.Error() == "heart_rate harus berada dalam range 40-180 bpm" {
-			utils.BadRequest(c, "Validasi gagal", err.Error())
+		// Cek apakah error adalah validasi (termasuk validasi nullable-aware)
+		// Error validasi biasanya dimulai dengan nama field atau "minimal"
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "harus berada dalam range") ||
+			strings.Contains(errMsg, "wajib diisi") ||
+			strings.Contains(errMsg, "minimal satu") ||
+			strings.Contains(errMsg, "bersamaan") {
+			utils.BadRequest(c, "Validasi gagal", errMsg)
 			return
 		}
-		utils.InternalServerError(c, "Gagal menyimpan data kesehatan", err.Error())
+		utils.InternalServerError(c, "Gagal menyimpan data kesehatan", errMsg)
 		return
 	}
 

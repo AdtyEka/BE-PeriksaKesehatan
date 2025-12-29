@@ -4,7 +4,9 @@ import (
 	"BE-PeriksaKesehatan/config"
 	"BE-PeriksaKesehatan/internal/model/entity"
 	"database/sql"
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -12,66 +14,43 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// InitDB membuka koneksi fisik (kabel) ke database menggunakan GORM/Postgres
-// Konfigurasi ini aman untuk production dan mengatasi masalah prepared statement cache
-
+// InitDB menginisialisasi koneksi database dengan konfigurasi untuk production.
+// PreferSimpleProtocol: true mengatasi error "prepared statement already exists" di Supabase/PostgreSQL.
 func InitDB(cfg *config.Config) (*gorm.DB, error) {
-	// Mengambil alamat database dari config.go
 	dbURL := cfg.DBURL
 
-	// Konfigurasi driver PostgreSQL dengan PreferSimpleProtocol: true
-	// Ini menonaktifkan prepared statement di level driver PostgreSQL
-	// Solusi untuk error "prepared statement already exists" di Supabase/PostgreSQL
-	// Penting: Gunakan postgres.New() dengan Config, bukan postgres.Open()
 	postgresConfig := postgres.Config{
 		DSN:                  dbURL,
-		PreferSimpleProtocol: true, // Gunakan protokol sederhana untuk menghindari prepared statement
+		PreferSimpleProtocol: true,
 	}
 
-	// Konfigurasi GORM dengan prepared statement disabled
-	// Ini mengatasi error "prepared statement already exists" di PostgreSQL/Supabase
 	gormConfig := &gorm.Config{
-		// Nonaktifkan prepared statement untuk menghindari konflik di PostgreSQL
 		PrepareStmt: false,
-		// Logger untuk development (bisa diubah ke Silent untuk production)
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger:      logger.Default.LogMode(logger.Info),
 	}
 
-	// Membuka koneksi menggunakan driver GORM/Postgres dengan konfigurasi eksplisit
 	db, err := gorm.Open(postgres.New(postgresConfig), gormConfig)
 	if err != nil {
 		log.Printf("Error: Gagal membuka koneksi ke database: %v", err)
 		return nil, err
 	}
 
-	// Dapatkan instance *sql.DB untuk konfigurasi connection pool
 	sqlDB, err := db.DB()
 	if err != nil {
 		log.Printf("Error: Gagal mendapatkan instance database: %v", err)
 		return nil, err
 	}
 
-	// Konfigurasi connection pool untuk production
-	// SetMaxOpenConns: jumlah maksimum koneksi terbuka ke database
 	sqlDB.SetMaxOpenConns(25)
-
-	// SetMaxIdleConns: jumlah maksimum koneksi idle di pool
 	sqlDB.SetMaxIdleConns(5)
-
-	// SetConnMaxLifetime: waktu maksimum koneksi bisa digunakan sebelum di-recycle
-	// Ini penting untuk database managed seperti Supabase yang mungkin mematikan koneksi lama
 	sqlDB.SetConnMaxLifetime(5 * time.Minute)
-
-	// SetConnMaxIdleTime: waktu maksimum koneksi idle sebelum di-close
 	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
 
-	// Test koneksi dengan melakukan ping
 	if err := sqlDB.Ping(); err != nil {
 		log.Printf("Error: Gagal melakukan ping ke database: %v", err)
 		return nil, err
 	}
 
-	// AutoMigrate
 	err = db.AutoMigrate(
 		&entity.User{},
 		&entity.HealthData{},
@@ -86,12 +65,97 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 		log.Println("Info: Auto-migrate berhasil!")
 	}
 
+	if err := migrateHealthDataNullable(db); err != nil {
+		log.Printf("Warning: Gagal melakukan migration nullable untuk health_data: %v", err)
+	} else {
+		log.Println("Info: Migration nullable untuk health_data berhasil!")
+	}
+
 	log.Println("Info: Koneksi ke database berhasil dibuat!")
 	return db, nil
 }
 
-// GetDBConnection mengembalikan *sql.DB untuk operasi low-level jika diperlukan
 func GetDBConnection(db *gorm.DB) (*sql.DB, error) {
 	return db.DB()
+}
+
+// migrateHealthDataNullable mengubah kolom health_data dari NOT NULL ke NULL.
+// GORM AutoMigrate tidak mengubah constraint NOT NULL secara otomatis.
+// Migration ini idempotent dan aman untuk Supabase/PostgreSQL.
+func migrateHealthDataNullable(db *gorm.DB) error {
+	migrator := db.Migrator()
+
+	if !migrator.HasTable(&entity.HealthData{}) {
+		log.Println("Info: Tabel health_data belum ada, akan dibuat oleh AutoMigrate")
+		return nil
+	}
+
+	columnsToMigrate := []string{
+		"systolic",
+		"diastolic",
+		"blood_sugar",
+		"weight",
+		"heart_rate",
+	}
+
+	for _, columnName := range columnsToMigrate {
+		if !migrator.HasColumn(&entity.HealthData{}, columnName) {
+			log.Printf("Info: Kolom %s tidak ditemukan, skip migration", columnName)
+			continue
+		}
+
+		var isNullable string
+		err := db.Raw(`
+			SELECT is_nullable 
+			FROM information_schema.columns 
+			WHERE table_schema = 'public' 
+			AND table_name = 'health_data' 
+			AND column_name = $1
+		`, columnName).Scan(&isNullable).Error
+
+		if err != nil {
+			log.Printf("Warning: Gagal mengecek constraint untuk kolom %s: %v", columnName, err)
+			log.Printf("Info: Mencoba langsung mengubah kolom %s menjadi nullable...", columnName)
+			
+			alterSQL := fmt.Sprintf(`
+				ALTER TABLE health_data 
+				ALTER COLUMN %s DROP NOT NULL
+			`, columnName)
+
+			if err := db.Exec(alterSQL).Error; err != nil {
+				if contains(err.Error(), "does not exist") || contains(err.Error(), "already") {
+					log.Printf("Info: Kolom %s sudah nullable atau constraint tidak ada", columnName)
+				} else {
+					log.Printf("Warning: Gagal mengubah kolom %s menjadi nullable: %v", columnName, err)
+				}
+			} else {
+				log.Printf("Info: Kolom %s berhasil diubah menjadi nullable", columnName)
+			}
+			continue
+		}
+
+		if isNullable == "NO" {
+			alterSQL := fmt.Sprintf(`
+				ALTER TABLE health_data 
+				ALTER COLUMN %s DROP NOT NULL
+			`, columnName)
+
+			if err := db.Exec(alterSQL).Error; err != nil {
+				log.Printf("Warning: Gagal mengubah kolom %s menjadi nullable: %v", columnName, err)
+				log.Printf("Info: Pastikan user database di Supabase punya permission ALTER TABLE")
+				continue
+			}
+
+			log.Printf("Info: Kolom %s berhasil diubah menjadi nullable", columnName)
+		} else {
+			log.Printf("Info: Kolom %s sudah nullable, skip migration", columnName)
+		}
+	}
+
+	return nil
+}
+
+func contains(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
