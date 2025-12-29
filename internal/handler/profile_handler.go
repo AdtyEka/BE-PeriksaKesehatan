@@ -4,35 +4,31 @@ import (
 	"BE-PeriksaKesehatan/internal/model/dto/request"
 	"BE-PeriksaKesehatan/internal/repository"
 	"BE-PeriksaKesehatan/internal/service"
+	"BE-PeriksaKesehatan/pkg/middleware"
 	"BE-PeriksaKesehatan/pkg/utils"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 type ProfileHandler struct {
 	profileService *service.ProfileService
 	authRepo       *repository.AuthRepository
-	jwtSecret      string
 }
 
 func NewProfileHandler(
 	profileService *service.ProfileService,
 	authRepo *repository.AuthRepository,
-	jwtSecret string,
 ) *ProfileHandler {
 	return &ProfileHandler{
 		profileService: profileService,
 		authRepo:       authRepo,
-		jwtSecret:      jwtSecret,
 	}
 }
 
 func (h *ProfileHandler) GetProfile(c *gin.Context) {
-	userID, err := h.getUserIDFromToken(c)
-	if err != nil {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
 		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
 		return
 	}
@@ -51,14 +47,15 @@ func (h *ProfileHandler) GetProfile(c *gin.Context) {
 }
 
 func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
-	userID, err := h.getUserIDFromToken(c)
-	if err != nil {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
 		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
 		return
 	}
 
 	var req request.UpdateProfileRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var err error
+	if err = c.ShouldBindJSON(&req); err != nil {
 		utils.BadRequest(c, "Data tidak valid", err.Error())
 		return
 	}
@@ -81,8 +78,8 @@ func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 }
 
 func (h *ProfileHandler) GetPersonalInfo(c *gin.Context) {
-	userID, err := h.getUserIDFromToken(c)
-	if err != nil {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
 		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
 		return
 	}
@@ -101,14 +98,15 @@ func (h *ProfileHandler) GetPersonalInfo(c *gin.Context) {
 }
 
 func (h *ProfileHandler) UpdatePersonalInfo(c *gin.Context) {
-	userID, err := h.getUserIDFromToken(c)
-	if err != nil {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
 		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
 		return
 	}
 
 	var req request.UpdatePersonalInfoRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var err error
+	if err = c.ShouldBindJSON(&req); err != nil {
 		utils.BadRequest(c, "Data tidak valid", err.Error())
 		return
 	}
@@ -132,8 +130,8 @@ func (h *ProfileHandler) UpdatePersonalInfo(c *gin.Context) {
 }
 
 func (h *ProfileHandler) GetHealthTargets(c *gin.Context) {
-	userID, err := h.getUserIDFromToken(c)
-	if err != nil {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
 		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
 		return
 	}
@@ -148,14 +146,15 @@ func (h *ProfileHandler) GetHealthTargets(c *gin.Context) {
 }
 
 func (h *ProfileHandler) UpdateHealthTargets(c *gin.Context) {
-	userID, err := h.getUserIDFromToken(c)
-	if err != nil {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
 		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
 		return
 	}
 
 	var req request.UpdateHealthTargetsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var err error
+	if err = c.ShouldBindJSON(&req); err != nil {
 		utils.BadRequest(c, "Data tidak valid", err.Error())
 		return
 	}
@@ -174,8 +173,8 @@ func (h *ProfileHandler) UpdateHealthTargets(c *gin.Context) {
 }
 
 func (h *ProfileHandler) GetSettings(c *gin.Context) {
-	userID, err := h.getUserIDFromToken(c)
-	if err != nil {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
 		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
 		return
 	}
@@ -194,14 +193,15 @@ func (h *ProfileHandler) GetSettings(c *gin.Context) {
 }
 
 func (h *ProfileHandler) UpdateSettings(c *gin.Context) {
-	userID, err := h.getUserIDFromToken(c)
-	if err != nil {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
 		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
 		return
 	}
 
 	var req request.UpdateSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var err error
+	if err = c.ShouldBindJSON(&req); err != nil {
 		utils.BadRequest(c, "Data tidak valid", err.Error())
 		return
 	}
@@ -221,65 +221,5 @@ func (h *ProfileHandler) UpdateSettings(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Pengaturan berhasil diupdate", nil)
-}
-
-func (h *ProfileHandler) getUserIDFromToken(c *gin.Context) (uint, error) {
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		return 0, jwt.ErrSignatureInvalid
-	}
-
-	tokenString := authHeader
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		tokenString = authHeader[7:]
-	}
-
-	isBlacklisted, err := h.authRepo.IsTokenBlacklisted(tokenString)
-	if err != nil {
-		return 0, err
-	}
-	if isBlacklisted {
-		return 0, jwt.ErrTokenExpired
-	}
-
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, jwt.ErrSignatureInvalid
-		}
-		return []byte(h.jwtSecret), nil
-	})
-
-	if err != nil {
-		return 0, err
-	}
-
-	if !token.Valid {
-		return 0, jwt.ErrSignatureInvalid
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return 0, jwt.ErrInvalidKey
-	}
-
-	sub, ok := claims["sub"]
-	if !ok {
-		return 0, jwt.ErrInvalidKey
-	}
-
-	userIDFloat, ok := sub.(float64)
-	if !ok {
-		userIDStr, ok := sub.(string)
-		if !ok {
-			return 0, jwt.ErrInvalidKey
-		}
-		userIDUint, err := strconv.ParseUint(userIDStr, 10, 32)
-		if err != nil {
-			return 0, err
-		}
-		return uint(userIDUint), nil
-	}
-
-	return uint(userIDFloat), nil
 }
 

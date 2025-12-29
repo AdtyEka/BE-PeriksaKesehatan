@@ -4,31 +4,27 @@ import (
 	"BE-PeriksaKesehatan/internal/model/dto/request"
 	"BE-PeriksaKesehatan/internal/repository"
 	"BE-PeriksaKesehatan/internal/service"
+	"BE-PeriksaKesehatan/pkg/middleware"
 	"BE-PeriksaKesehatan/pkg/utils"
 	"bytes"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 // HealthDataHandler menangani semua request terkait data kesehatan
 type HealthDataHandler struct {
 	healthDataService *service.HealthDataService
 	authRepo          *repository.AuthRepository
-	jwtSecret         string
 }
 
 // NewHealthDataHandler membuat instance baru dari HealthDataHandler
-func NewHealthDataHandler(healthDataService *service.HealthDataService, authRepo *repository.AuthRepository, jwtSecret string) *HealthDataHandler {
+func NewHealthDataHandler(healthDataService *service.HealthDataService, authRepo *repository.AuthRepository) *HealthDataHandler {
 	return &HealthDataHandler{
 		healthDataService: healthDataService,
 		authRepo:          authRepo,
-		jwtSecret:         jwtSecret,
 	}
 }
 
@@ -42,9 +38,9 @@ func (h *HealthDataHandler) CreateHealthData(c *gin.Context) {
 		return
 	}
 
-	// Ambil user ID dari JWT token
-	userID, err := h.getUserIDFromToken(c)
-	if err != nil {
+	// Ambil user ID dari context (sudah divalidasi oleh middleware)
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
 		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
 		return
 	}
@@ -72,9 +68,9 @@ func (h *HealthDataHandler) CreateHealthData(c *gin.Context) {
 
 // GetHealthDataByUserID menangani request untuk mendapatkan riwayat data kesehatan user
 func (h *HealthDataHandler) GetHealthDataByUserID(c *gin.Context) {
-	// Ambil user ID dari JWT token
-	userID, err := h.getUserIDFromToken(c)
-	if err != nil {
+	// Ambil user ID dari context (sudah divalidasi oleh middleware)
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
 		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
 		return
 	}
@@ -92,9 +88,9 @@ func (h *HealthDataHandler) GetHealthDataByUserID(c *gin.Context) {
 
 // GetHealthHistory menangani request untuk mendapatkan riwayat kesehatan dengan filter
 func (h *HealthDataHandler) GetHealthHistory(c *gin.Context) {
-	// Ambil user ID dari JWT token
-	userID, err := h.getUserIDFromToken(c)
-	if err != nil {
+	// Ambil user ID dari context (sudah divalidasi oleh middleware)
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
 		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
 		return
 	}
@@ -131,9 +127,9 @@ func (h *HealthDataHandler) GetHealthHistory(c *gin.Context) {
 
 // DownloadHealthReport menangani request untuk mengunduh laporan riwayat kesehatan
 func (h *HealthDataHandler) DownloadHealthReport(c *gin.Context) {
-	// Ambil user ID dari JWT token
-	userID, err := h.getUserIDFromToken(c)
-	if err != nil {
+	// Ambil user ID dari context (sudah divalidasi oleh middleware)
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
 		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
 		return
 	}
@@ -159,6 +155,7 @@ func (h *HealthDataHandler) DownloadHealthReport(c *gin.Context) {
 
 	var fileBuffer *bytes.Buffer
 	var filename string
+	var err error
 
 	// Generate laporan berdasarkan format
 	if format == "csv" {
@@ -191,82 +188,5 @@ func (h *HealthDataHandler) DownloadHealthReport(c *gin.Context) {
 
 	// Kirim file
 	c.Data(http.StatusOK, c.GetHeader("Content-Type"), fileBuffer.Bytes())
-}
-
-// getUserIDFromToken mengambil user ID dari JWT token di header Authorization
-func (h *HealthDataHandler) getUserIDFromToken(c *gin.Context) (uint, error) {
-	// Ambil token dari header
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		return 0, jwt.ErrSignatureInvalid
-	}
-
-	// Parse token (format: "Bearer <token>")
-	tokenString := authHeader
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		tokenString = authHeader[7:]
-	}
-
-	// Cek apakah token sudah di-blacklist
-	isBlacklisted, err := h.authRepo.IsTokenBlacklisted(tokenString)
-	if err != nil {
-		return 0, err
-	}
-	if isBlacklisted {
-		return 0, jwt.ErrTokenExpired // Menggunakan ErrTokenExpired untuk menunjukkan token tidak valid
-	}
-
-	// Parse dan validasi token
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// Validasi bahwa signing method adalah HS256 (sama seperti saat login)
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, jwt.ErrSignatureInvalid
-		}
-		return []byte(h.jwtSecret), nil
-	})
-
-	if err != nil {
-		return 0, err
-	}
-
-	if !token.Valid {
-		return 0, jwt.ErrSignatureInvalid
-	}
-
-	// Ambil claims
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return 0, jwt.ErrInvalidKey
-	}
-
-	// Validasi expiry time (jwt library sudah validasi, tapi kita pastikan)
-	if exp, ok := claims["exp"].(float64); ok {
-		if int64(exp) < time.Now().Unix() {
-			return 0, jwt.ErrTokenExpired
-		}
-	}
-
-	// Ambil user ID dari claims
-	sub, ok := claims["sub"]
-	if !ok {
-		return 0, jwt.ErrInvalidKey
-	}
-
-	// Convert ke uint (JWT library mengkonversi angka menjadi float64 saat parsing JSON)
-	userIDFloat, ok := sub.(float64)
-	if !ok {
-		// Coba sebagai string (untuk kompatibilitas)
-		userIDStr, ok := sub.(string)
-		if !ok {
-			return 0, jwt.ErrInvalidKey
-		}
-		userIDUint, err := strconv.ParseUint(userIDStr, 10, 32)
-		if err != nil {
-			return 0, err
-		}
-		return uint(userIDUint), nil
-	}
-
-	return uint(userIDFloat), nil
 }
 

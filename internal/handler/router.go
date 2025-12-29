@@ -4,6 +4,7 @@ import (
 	"BE-PeriksaKesehatan/config"
 	"BE-PeriksaKesehatan/internal/repository"
 	"BE-PeriksaKesehatan/internal/service"
+	"BE-PeriksaKesehatan/pkg/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,14 +23,18 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 	educationalVideoService := service.NewEducationalVideoService(educationalVideoRepo)
 	profileService := service.NewProfileService(userRepo, healthDataRepo, healthTargetRepo)
 
+	// Initialize middleware
+	authMiddleware := middleware.AuthMiddleware(authRepo, cfg.JWTSecret)
+
 	authHandler := NewAuthHandler(userRepo, cfg.JWTSecret)
-	healthDataHandler := NewHealthDataHandler(healthDataService, authRepo, cfg.JWTSecret)
-	healthAlertHandler := NewHealthAlertHandler(healthAlertService, authRepo, cfg.JWTSecret)
+	healthDataHandler := NewHealthDataHandler(healthDataService, authRepo)
+	healthAlertHandler := NewHealthAlertHandler(healthAlertService, authRepo)
 	educationalVideoHandler := NewEducationalVideoHandler(educationalVideoService)
-	profileHandler := NewProfileHandler(profileService, authRepo, cfg.JWTSecret)
+	profileHandler := NewProfileHandler(profileService, authRepo)
 
 	api := router.Group("/api")
 	{
+		// Public routes (no auth required)
 		auth := api.Group("/auth")
 		{
 			auth.POST("/register", authHandler.Register)
@@ -37,7 +42,9 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 			auth.POST("/logout", authHandler.Logout)
 		}
 
+		// Protected routes (require auth)
 		health := api.Group("/health")
+		health.Use(authMiddleware)
 		{
 			health.POST("/data", healthDataHandler.CreateHealthData)
 			health.GET("/data", healthDataHandler.GetHealthDataByUserID)
@@ -53,6 +60,7 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 		}
 
 		profile := api.Group("/profile")
+		profile.Use(authMiddleware)
 		{
 			profile.GET("", profileHandler.GetProfile)
 			profile.PUT("", profileHandler.UpdateProfile)
