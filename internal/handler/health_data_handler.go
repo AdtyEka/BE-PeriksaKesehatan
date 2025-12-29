@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -61,16 +62,23 @@ func (h *HealthDataHandler) CreateHealthData(c *gin.Context) {
 	// Panggil service untuk membuat data kesehatan
 	resp, err := h.healthDataService.CreateHealthData(userID, &req)
 	if err != nil {
-		// Cek apakah error adalah validasi
-		if err.Error() == "systolic harus berada dalam range 90-180 mmHg" ||
-			err.Error() == "diastolic harus berada dalam range 60-120 mmHg" ||
-			err.Error() == "blood_sugar harus berada dalam range 60-300 mg/dL" ||
-			err.Error() == "weight harus berada dalam range 20-200 kg" ||
-			err.Error() == "heart_rate harus berada dalam range 40-180 bpm" {
-			utils.BadRequest(c, "Validasi gagal", err.Error())
+		// Cek apakah error adalah validasi dengan menggunakan strings.Contains
+		// karena error message sekarang menggunakan fmt.Errorf dengan format yang lebih detail
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "validasi gagal") ||
+			strings.Contains(errMsg, "systolic harus berada dalam range") ||
+			strings.Contains(errMsg, "diastolic harus berada dalam range") ||
+			strings.Contains(errMsg, "blood_sugar harus berada dalam range") ||
+			strings.Contains(errMsg, "weight harus berada dalam range") ||
+			strings.Contains(errMsg, "weight harus lebih besar dari 0") ||
+			strings.Contains(errMsg, "heart_rate harus berada dalam range") ||
+			strings.Contains(errMsg, "activity tidak boleh empty string") ||
+			strings.Contains(errMsg, "request tidak boleh nil") ||
+			strings.Contains(errMsg, "user_id tidak valid") {
+			utils.BadRequest(c, "Validasi gagal", errMsg)
 			return
 		}
-		utils.InternalServerError(c, "Gagal menyimpan data kesehatan", err.Error())
+		utils.InternalServerError(c, "Gagal menyimpan data kesehatan", errMsg)
 		return
 	}
 
