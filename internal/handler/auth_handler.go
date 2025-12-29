@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"BE-PeriksaKesehatan/config"
 	"BE-PeriksaKesehatan/internal/model/entity"
 	"BE-PeriksaKesehatan/internal/model/dto/request"
 	"BE-PeriksaKesehatan/internal/model/dto/response"
@@ -23,15 +22,13 @@ type AuthHandler struct {
 	jwtSecret string
 }
 
-func NewAuthHandler(userRepo *repository.UserRepository) *AuthHandler {
-	cfg := config.LoadConfig()
-	secret := cfg.JWTSecret
+func NewAuthHandler(userRepo *repository.UserRepository, jwtSecret string) *AuthHandler {
 	authRepo := repository.NewAuthRepository(userRepo.GetDB())
 
 	return &AuthHandler{
 		userRepo:  userRepo,
 		authRepo:  authRepo,
-		jwtSecret: secret,
+		jwtSecret: jwtSecret,
 	}
 }
 

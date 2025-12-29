@@ -17,7 +17,7 @@ func main() {
 	}
 
 	userRepo := repository.NewUserRepository(db)
-	router := handler.SetupRouter(userRepo)
+	router := handler.SetupRouter(cfg, userRepo)
 
 	port := cfg.Port
 	log.Printf("Info: Server berjalan di port %s", port)

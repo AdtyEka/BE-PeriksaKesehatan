@@ -1,13 +1,14 @@
 package handler
 
 import (
+	"BE-PeriksaKesehatan/config"
 	"BE-PeriksaKesehatan/internal/repository"
 	"BE-PeriksaKesehatan/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
-func SetupRouter(userRepo *repository.UserRepository) *gin.Engine {
+func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.Engine {
 	router := gin.Default()
 
 	healthDataRepo := repository.NewHealthDataRepository(userRepo.GetDB())
@@ -21,11 +22,11 @@ func SetupRouter(userRepo *repository.UserRepository) *gin.Engine {
 	educationalVideoService := service.NewEducationalVideoService(educationalVideoRepo)
 	profileService := service.NewProfileService(userRepo, healthDataRepo, healthTargetRepo)
 
-	authHandler := NewAuthHandler(userRepo)
-	healthDataHandler := NewHealthDataHandler(healthDataService, authRepo)
-	healthAlertHandler := NewHealthAlertHandler(healthAlertService, authRepo)
+	authHandler := NewAuthHandler(userRepo, cfg.JWTSecret)
+	healthDataHandler := NewHealthDataHandler(healthDataService, authRepo, cfg.JWTSecret)
+	healthAlertHandler := NewHealthAlertHandler(healthAlertService, authRepo, cfg.JWTSecret)
 	educationalVideoHandler := NewEducationalVideoHandler(educationalVideoService)
-	profileHandler := NewProfileHandler(profileService, authRepo)
+	profileHandler := NewProfileHandler(profileService, authRepo, cfg.JWTSecret)
 
 	api := router.Group("/api")
 	{

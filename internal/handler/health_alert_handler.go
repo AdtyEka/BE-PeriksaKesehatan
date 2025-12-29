@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"BE-PeriksaKesehatan/config"
 	"BE-PeriksaKesehatan/internal/model/dto/request"
 	"BE-PeriksaKesehatan/internal/repository"
 	"BE-PeriksaKesehatan/internal/service"
@@ -22,15 +21,11 @@ type HealthAlertHandler struct {
 }
 
 // NewHealthAlertHandler membuat instance baru dari HealthAlertHandler
-func NewHealthAlertHandler(healthAlertService *service.HealthAlertService, authRepo *repository.AuthRepository) *HealthAlertHandler {
-	// Ambil secret dari config
-	cfg := config.LoadConfig()
-	secret := cfg.JWTSecret
-
+func NewHealthAlertHandler(healthAlertService *service.HealthAlertService, authRepo *repository.AuthRepository, jwtSecret string) *HealthAlertHandler {
 	return &HealthAlertHandler{
 		healthAlertService: healthAlertService,
 		authRepo:           authRepo,
-		jwtSecret:          secret,
+		jwtSecret:          jwtSecret,
 	}
 }
 

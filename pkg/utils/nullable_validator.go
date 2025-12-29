@@ -5,11 +5,6 @@ import (
 	"fmt"
 )
 
-// NullableValidator menyediakan helper functions untuk validasi field nullable
-// dengan tujuan mencegah silent bugs dan memastikan logic eksplisit
-
-// ValidateNullableInt memvalidasi nilai int nullable dengan range
-// Returns:
 //   - error jika field tidak nil dan nilainya di luar range
 //   - nil jika field nil (tidak perlu validasi) atau nilainya valid
 func ValidateNullableInt(field *int, fieldName string, min, max int) error {
@@ -25,8 +20,6 @@ func ValidateNullableInt(field *int, fieldName string, min, max int) error {
 	return nil
 }
 
-// ValidateNullableFloat64 memvalidasi nilai float64 nullable dengan range
-// Returns:
 //   - error jika field tidak nil dan nilainya di luar range
 //   - nil jika field nil (tidak perlu validasi) atau nilainya valid
 func ValidateNullableFloat64(field *float64, fieldName string, min, max float64) error {

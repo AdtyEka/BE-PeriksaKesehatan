@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"BE-PeriksaKesehatan/config"
 	"BE-PeriksaKesehatan/internal/model/dto/request"
 	"BE-PeriksaKesehatan/internal/repository"
 	"BE-PeriksaKesehatan/internal/service"
@@ -9,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -26,19 +24,11 @@ type HealthDataHandler struct {
 }
 
 // NewHealthDataHandler membuat instance baru dari HealthDataHandler
-func NewHealthDataHandler(healthDataService *service.HealthDataService, authRepo *repository.AuthRepository) *HealthDataHandler {
-	// Ambil secret dari environment (sama seperti AuthHandler)
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		// fallback: coba ambil dari config untuk memastikan kalau LoadConfig sudah dijalankan
-		cfg := config.LoadConfig()
-		secret = cfg.JWTSecret
-	}
-
+func NewHealthDataHandler(healthDataService *service.HealthDataService, authRepo *repository.AuthRepository, jwtSecret string) *HealthDataHandler {
 	return &HealthDataHandler{
 		healthDataService: healthDataService,
 		authRepo:          authRepo,
-		jwtSecret:         secret,
+		jwtSecret:         jwtSecret,
 	}
 }
 

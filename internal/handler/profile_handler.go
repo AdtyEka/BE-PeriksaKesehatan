@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"BE-PeriksaKesehatan/config"
 	"BE-PeriksaKesehatan/internal/model/dto/request"
 	"BE-PeriksaKesehatan/internal/repository"
 	"BE-PeriksaKesehatan/internal/service"
@@ -22,14 +21,12 @@ type ProfileHandler struct {
 func NewProfileHandler(
 	profileService *service.ProfileService,
 	authRepo *repository.AuthRepository,
+	jwtSecret string,
 ) *ProfileHandler {
-	cfg := config.LoadConfig()
-	secret := cfg.JWTSecret
-
 	return &ProfileHandler{
 		profileService: profileService,
 		authRepo:       authRepo,
-		jwtSecret:      secret,
+		jwtSecret:      jwtSecret,
 	}
 }
 
