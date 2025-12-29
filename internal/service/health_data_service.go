@@ -5,6 +5,7 @@ import (
 	"BE-PeriksaKesehatan/internal/model/dto/response"
 	"BE-PeriksaKesehatan/internal/model/entity"
 	"BE-PeriksaKesehatan/internal/repository"
+	"BE-PeriksaKesehatan/pkg/utils"
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
@@ -33,42 +34,88 @@ func NewHealthDataService(
 
 
 // ValidateHealthData melakukan validasi range nilai data kesehatan
+// Validasi ini eksplisit membedakan antara nil, zero value, dan nilai valid
 func (s *HealthDataService) ValidateHealthData(req *request.HealthDataRequest) error {
-	// Validasi systolic: 90 – 180
-	if req.Systolic < 90 || req.Systolic > 180 {
-		return errors.New("systolic harus berada dalam range 90-180 mmHg")
+	if req == nil {
+		return errors.New("request tidak boleh nil")
 	}
 
-	// Validasi diastolic: 60 – 120
-	if req.Diastolic < 60 || req.Diastolic > 120 {
-		return errors.New("diastolic harus berada dalam range 60-120 mmHg")
+	// Validasi systolic: 90 – 180 (hanya jika tidak null)
+	if req.Systolic != nil {
+		systolic := *req.Systolic
+		if systolic < 90 || systolic > 180 {
+			return fmt.Errorf("systolic harus berada dalam range 90-180 mmHg, got: %d", systolic)
+		}
 	}
 
-	// Validasi blood_sugar: 60 – 300
-	if req.BloodSugar < 60 || req.BloodSugar > 300 {
-		return errors.New("blood_sugar harus berada dalam range 60-300 mg/dL")
+	// Validasi diastolic: 60 – 120 (hanya jika tidak null)
+	if req.Diastolic != nil {
+		diastolic := *req.Diastolic
+		if diastolic < 60 || diastolic > 120 {
+			return fmt.Errorf("diastolic harus berada dalam range 60-120 mmHg, got: %d", diastolic)
+		}
 	}
 
-	// Validasi weight: 20 – 200
-	if req.Weight < 20 || req.Weight > 200 {
-		return errors.New("weight harus berada dalam range 20-200 kg")
+	// Validasi blood_sugar: 60 – 300 (hanya jika tidak null)
+	if req.BloodSugar != nil {
+		bloodSugar := *req.BloodSugar
+		if bloodSugar < 60 || bloodSugar > 300 {
+			return fmt.Errorf("blood_sugar harus berada dalam range 60-300 mg/dL, got: %d", bloodSugar)
+		}
 	}
 
-	// Validasi heart_rate: 40 – 180
-	if req.HeartRate < 40 || req.HeartRate > 180 {
-		return errors.New("heart_rate harus berada dalam range 40-180 bpm")
+	// Validasi weight: 20 – 200 (hanya jika tidak null)
+	// Catatan: weight 0.0 dianggap invalid, harus explicit nil atau dalam range
+	if req.Weight != nil {
+		weight := *req.Weight
+		if weight <= 0 {
+			return errors.New("weight harus lebih besar dari 0 kg")
+		}
+		if weight < 20 || weight > 200 {
+			return fmt.Errorf("weight harus berada dalam range 20-200 kg, got: %.2f", weight)
+		}
+	}
+
+	// Validasi heart_rate: 40 – 180 (hanya jika tidak null)
+	if req.HeartRate != nil {
+		heartRate := *req.HeartRate
+		if heartRate < 40 || heartRate > 180 {
+			return fmt.Errorf("heart_rate harus berada dalam range 40-180 bpm, got: %d", heartRate)
+		}
+	}
+
+	// Validasi Activity: jika tidak nil, harus tidak empty string
+	// Ini membedakan antara null (tidak ada data) dan empty string (data kosong)
+	if req.Activity != nil && *req.Activity == "" {
+		return errors.New("activity tidak boleh empty string, gunakan null jika tidak ada data")
 	}
 
 	return nil
 }
 
 func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDataRequest) (*response.HealthDataResponse, error) {
-	// 1) Validasi data
-	if err := s.ValidateHealthData(req); err != nil {
-		return nil, err
+	// Guard clause: validasi input
+	if req == nil {
+		return nil, errors.New("request tidak boleh nil")
+	}
+	if userID == 0 {
+		return nil, errors.New("user_id tidak valid")
 	}
 
-	// 2) Bentuk entity dari request
+	// 1) Validasi data
+	if err := s.ValidateHealthData(req); err != nil {
+		return nil, fmt.Errorf("validasi gagal: %w", err)
+	}
+
+	// 2) Bentuk entity dari request dengan normalisasi Activity
+	// Normalisasi: empty string -> nil untuk konsistensi
+	var activity *string
+	if req.Activity != nil && *req.Activity != "" {
+		activity = req.Activity
+	} else {
+		activity = nil
+	}
+
 	healthData := &entity.HealthData{
 		UserID:     userID,
 		Systolic:   req.Systolic,
@@ -76,23 +123,33 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 		BloodSugar: req.BloodSugar,
 		Weight:     req.Weight,
 		HeartRate:  req.HeartRate,
-		Activity:   req.Activity,
+		Activity:   activity,
 	}
 
 	// 3) Simpan ke database dulu (biar dapat ID & CreatedAt)
 	if err := s.healthDataRepo.CreateHealthData(healthData); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gagal menyimpan data kesehatan: %w", err)
+	}
+
+	// Guard clause: pastikan healthData sudah punya ID setelah create
+	if healthData.ID == 0 {
+		return nil, errors.New("gagal mendapatkan ID setelah menyimpan data kesehatan")
 	}
 
 	// 4) Generate alert dari data yang sudah tersimpan
 	alerts := s.generateAlertsFromHealthData(*healthData)
 
 	// 5) Simpan alert ke DB (kalau gagal, data utama tetap aman)
+	// Catatan: error saat save alert tidak menghentikan proses, hanya log
 	if len(alerts) > 0 {
-		_ = s.healthAlertRepo.SaveMany(alerts)
+		if err := s.healthAlertRepo.SaveMany(alerts); err != nil {
+			// Log error tapi tidak return error (data utama sudah tersimpan)
+			// Di production, bisa gunakan logger di sini
+			_ = err
+		}
 	}
 
-	// 6) Buat response
+	// 6) Buat response dengan mapping yang eksplisit
 	resp := &response.HealthDataResponse{
 		ID:         healthData.ID,
 		UserID:     healthData.UserID,
@@ -221,32 +278,66 @@ func (s *HealthDataService) calculateSummary(data, prevData []entity.HealthData,
 }
 
 // calculateBloodPressureSummary menghitung ringkasan tekanan darah
+// Menggunakan safe dereference untuk menghindari panic
 func (s *HealthDataService) calculateBloodPressureSummary(data, prevData []entity.HealthData) *response.BloodPressureSummary {
 	if len(data) == 0 {
 		return nil
 	}
 
 	var sumSystolic, sumDiastolic float64
+	var countSystolic, countDiastolic int
 	for _, d := range data {
-		sumSystolic += float64(d.Systolic)
-		sumDiastolic += float64(d.Diastolic)
+		// Safe dereference dengan nil check eksplisit
+		if d.Systolic != nil {
+			systolic := *d.Systolic
+			sumSystolic += float64(systolic)
+			countSystolic++
+		}
+		if d.Diastolic != nil {
+			diastolic := *d.Diastolic
+			sumDiastolic += float64(diastolic)
+			countDiastolic++
+		}
 	}
 
-	avgSystolic := sumSystolic / float64(len(data))
-	avgDiastolic := sumDiastolic / float64(len(data))
+	// Guard clause: jika tidak ada data yang valid, return nil
+	if countSystolic == 0 && countDiastolic == 0 {
+		return nil
+	}
 
-	// Hitung rata-rata periode sebelumnya
+	var avgSystolic, avgDiastolic float64
+	if countSystolic > 0 {
+		avgSystolic = sumSystolic / float64(countSystolic)
+	}
+	if countDiastolic > 0 {
+		avgDiastolic = sumDiastolic / float64(countDiastolic)
+	}
+
+	// Hitung rata-rata periode sebelumnya dengan safe dereference
 	var prevAvgSystolic, prevAvgDiastolic float64
+	var prevCountSystolic, prevCountDiastolic int
 	if len(prevData) > 0 {
 		for _, d := range prevData {
-			prevAvgSystolic += float64(d.Systolic)
-			prevAvgDiastolic += float64(d.Diastolic)
+			if d.Systolic != nil {
+				systolic := *d.Systolic
+				prevAvgSystolic += float64(systolic)
+				prevCountSystolic++
+			}
+			if d.Diastolic != nil {
+				diastolic := *d.Diastolic
+				prevAvgDiastolic += float64(diastolic)
+				prevCountDiastolic++
+			}
 		}
-		prevAvgSystolic /= float64(len(prevData))
-		prevAvgDiastolic /= float64(len(prevData))
+		if prevCountSystolic > 0 {
+			prevAvgSystolic /= float64(prevCountSystolic)
+		}
+		if prevCountDiastolic > 0 {
+			prevAvgDiastolic /= float64(prevCountDiastolic)
+		}
 	}
 
-	// Hitung persentase perubahan
+	// Hitung persentase perubahan dengan guard clause untuk avoid division by zero
 	changePercent := 0.0
 	if prevAvgSystolic > 0 {
 		changePercent = ((avgSystolic - prevAvgSystolic) / prevAvgSystolic) * 100
@@ -263,27 +354,46 @@ func (s *HealthDataService) calculateBloodPressureSummary(data, prevData []entit
 }
 
 // calculateBloodSugarSummary menghitung ringkasan gula darah
+// Menggunakan safe dereference untuk menghindari panic
 func (s *HealthDataService) calculateBloodSugarSummary(data, prevData []entity.HealthData) *response.BloodSugarSummary {
 	if len(data) == 0 {
 		return nil
 	}
 
 	var sum float64
+	var count int
 	for _, d := range data {
-		sum += float64(d.BloodSugar)
+		// Safe dereference dengan nil check eksplisit
+		if d.BloodSugar != nil {
+			bloodSugar := *d.BloodSugar
+			sum += float64(bloodSugar)
+			count++
+		}
 	}
-	avgValue := sum / float64(len(data))
+	
+	// Guard clause: jika tidak ada data yang valid, return nil
+	if count == 0 {
+		return nil
+	}
+	avgValue := sum / float64(count)
 
-	// Hitung rata-rata periode sebelumnya
+	// Hitung rata-rata periode sebelumnya dengan safe dereference
 	var prevAvg float64
+	var prevCount int
 	if len(prevData) > 0 {
 		for _, d := range prevData {
-			prevAvg += float64(d.BloodSugar)
+			if d.BloodSugar != nil {
+				bloodSugar := *d.BloodSugar
+				prevAvg += float64(bloodSugar)
+				prevCount++
+			}
 		}
-		prevAvg /= float64(len(prevData))
+		if prevCount > 0 {
+			prevAvg /= float64(prevCount)
+		}
 	}
 
-	// Hitung persentase perubahan
+	// Hitung persentase perubahan dengan guard clause untuk avoid division by zero
 	changePercent := 0.0
 	if prevAvg > 0 {
 		changePercent = ((avgValue - prevAvg) / prevAvg) * 100
@@ -298,33 +408,58 @@ func (s *HealthDataService) calculateBloodSugarSummary(data, prevData []entity.H
 }
 
 // calculateWeightSummary menghitung ringkasan berat badan
+// Menggunakan safe dereference untuk menghindari panic
 func (s *HealthDataService) calculateWeightSummary(data, prevData []entity.HealthData) *response.WeightSummary {
 	if len(data) == 0 {
 		return nil
 	}
 
 	var sum float64
+	var count int
 	for _, d := range data {
-		sum += d.Weight
+		// Safe dereference dengan nil check eksplisit
+		if d.Weight != nil {
+			weight := *d.Weight
+			// Guard clause: skip jika weight <= 0 (invalid data)
+			if weight > 0 {
+				sum += weight
+				count++
+			}
+		}
 	}
-	avgWeight := sum / float64(len(data))
+	
+	// Guard clause: jika tidak ada data yang valid, return nil
+	if count == 0 {
+		return nil
+	}
+	avgWeight := sum / float64(count)
 
-	// Hitung rata-rata periode sebelumnya
+	// Hitung rata-rata periode sebelumnya dengan safe dereference
 	var prevAvg float64
+	var prevCount int
 	if len(prevData) > 0 {
 		for _, d := range prevData {
-			prevAvg += d.Weight
+			if d.Weight != nil {
+				weight := *d.Weight
+				// Guard clause: skip jika weight <= 0 (invalid data)
+				if weight > 0 {
+					prevAvg += weight
+					prevCount++
+				}
+			}
 		}
-		prevAvg /= float64(len(prevData))
+		if prevCount > 0 {
+			prevAvg /= float64(prevCount)
+		}
 	}
 
-	// Hitung persentase perubahan
+	// Hitung persentase perubahan dengan guard clause untuk avoid division by zero
 	changePercent := 0.0
 	if prevAvg > 0 {
 		changePercent = ((avgWeight - prevAvg) / prevAvg) * 100
 	}
 
-	// Tentukan tren
+	// Tentukan tren dengan threshold yang jelas
 	trend := "Stabil"
 	if changePercent > 1 {
 		trend = "Naik"
@@ -408,18 +543,35 @@ func (s *HealthDataService) buildBloodPressureTrend(data []entity.HealthData) []
 		dateMap[dateStr] = append(dateMap[dateStr], d)
 	}
 
-	// Hitung rata-rata per hari
+	// Hitung rata-rata per hari dengan safe dereference
 	var points []response.BloodPressureTrendPoint
 	for dateStr, dayData := range dateMap {
 		var sumSystolic, sumDiastolic float64
+		var countSystolic, countDiastolic int
 		for _, d := range dayData {
-			sumSystolic += float64(d.Systolic)
-			sumDiastolic += float64(d.Diastolic)
+			// Safe dereference dengan nil check eksplisit
+			if d.Systolic != nil {
+				systolic := *d.Systolic
+				sumSystolic += float64(systolic)
+				countSystolic++
+			}
+			if d.Diastolic != nil {
+				diastolic := *d.Diastolic
+				sumDiastolic += float64(diastolic)
+				countDiastolic++
+			}
+		}
+		var avgSystolic, avgDiastolic float64
+		if countSystolic > 0 {
+			avgSystolic = sumSystolic / float64(countSystolic)
+		}
+		if countDiastolic > 0 {
+			avgDiastolic = sumDiastolic / float64(countDiastolic)
 		}
 		points = append(points, response.BloodPressureTrendPoint{
 			Date:      dateStr,
-			Systolic:  roundTo2Decimals(sumSystolic / float64(len(dayData))),
-			Diastolic: roundTo2Decimals(sumDiastolic / float64(len(dayData))),
+			Systolic:  roundTo2Decimals(avgSystolic),
+			Diastolic: roundTo2Decimals(avgDiastolic),
 		})
 	}
 
@@ -440,16 +592,26 @@ func (s *HealthDataService) buildBloodSugarTrend(data []entity.HealthData) []res
 		dateMap[dateStr] = append(dateMap[dateStr], d)
 	}
 
-	// Hitung rata-rata per hari
+	// Hitung rata-rata per hari dengan safe dereference
 	var points []response.BloodSugarTrendPoint
 	for dateStr, dayData := range dateMap {
 		var sum float64
+		var count int
 		for _, d := range dayData {
-			sum += float64(d.BloodSugar)
+			// Safe dereference dengan nil check eksplisit
+			if d.BloodSugar != nil {
+				bloodSugar := *d.BloodSugar
+				sum += float64(bloodSugar)
+				count++
+			}
+		}
+		var avgValue float64
+		if count > 0 {
+			avgValue = sum / float64(count)
 		}
 		points = append(points, response.BloodSugarTrendPoint{
 			Date:     dateStr,
-			AvgValue: roundTo2Decimals(sum / float64(len(dayData))),
+			AvgValue: roundTo2Decimals(avgValue),
 		})
 	}
 
@@ -470,16 +632,29 @@ func (s *HealthDataService) buildWeightTrend(data []entity.HealthData) []respons
 		dateMap[dateStr] = append(dateMap[dateStr], d)
 	}
 
-	// Hitung rata-rata per hari
+	// Hitung rata-rata per hari dengan safe dereference
 	var points []response.WeightTrendPoint
 	for dateStr, dayData := range dateMap {
 		var sum float64
+		var count int
 		for _, d := range dayData {
-			sum += d.Weight
+			// Safe dereference dengan nil check eksplisit dan validasi > 0
+			if d.Weight != nil {
+				weight := *d.Weight
+				// Guard clause: skip jika weight <= 0 (invalid data)
+				if weight > 0 {
+					sum += weight
+					count++
+				}
+			}
+		}
+		var avgWeight float64
+		if count > 0 {
+			avgWeight = sum / float64(count)
 		}
 		points = append(points, response.WeightTrendPoint{
 			Date:   dateStr,
-			Weight: roundTo2Decimals(sum / float64(len(dayData))),
+			Weight: roundTo2Decimals(avgWeight),
 		})
 	}
 
@@ -533,57 +708,74 @@ func (s *HealthDataService) buildReadingHistory(data []entity.HealthData) []resp
 	})
 
 	for _, d := range sortedData {
-		// Tekanan darah
-		history = append(history, response.ReadingHistoryResponse{
-			ID:         d.ID,
-			DateTime:   d.CreatedAt,
-			MetricType: "tekanan_darah",
-			Value:      fmt.Sprintf("%d/%d mmHg", d.Systolic, d.Diastolic),
-			Context:    nil,
-			Status:     s.getBloodPressureStatus(float64(d.Systolic), true),
-			Notes:      nil,
-		})
+		// Tekanan darah - safe dereference dengan nil check eksplisit
+		if d.Systolic != nil && d.Diastolic != nil {
+			systolic := *d.Systolic
+			diastolic := *d.Diastolic
+			history = append(history, response.ReadingHistoryResponse{
+				ID:         d.ID,
+				DateTime:   d.CreatedAt,
+				MetricType: "tekanan_darah",
+				Value:      fmt.Sprintf("%d/%d mmHg", systolic, diastolic),
+				Context:    nil,
+				Status:     s.getBloodPressureStatus(float64(systolic), true),
+				Notes:      nil,
+			})
+		}
 
-		// Gula darah
-		history = append(history, response.ReadingHistoryResponse{
-			ID:         d.ID,
-			DateTime:   d.CreatedAt,
-			MetricType: "gula_darah",
-			Value:      fmt.Sprintf("%d mg/dL", d.BloodSugar),
-			Context:    nil,
-			Status:     s.getBloodSugarStatus(float64(d.BloodSugar)),
-			Notes:      nil,
-		})
+		// Gula darah - safe dereference
+		if d.BloodSugar != nil {
+			bloodSugar := *d.BloodSugar
+			history = append(history, response.ReadingHistoryResponse{
+				ID:         d.ID,
+				DateTime:   d.CreatedAt,
+				MetricType: "gula_darah",
+				Value:      fmt.Sprintf("%d mg/dL", bloodSugar),
+				Context:    nil,
+				Status:     s.getBloodSugarStatus(float64(bloodSugar)),
+				Notes:      nil,
+			})
+		}
 
-		// Berat badan
-		history = append(history, response.ReadingHistoryResponse{
-			ID:         d.ID,
-			DateTime:   d.CreatedAt,
-			MetricType: "berat_badan",
-			Value:      fmt.Sprintf("%.2f kg", d.Weight),
-			Context:    nil,
-			Status:     "Normal", // Berat badan tidak punya status abnormal
-			Notes:      nil,
-		})
+		// Berat badan - safe dereference dengan validasi > 0
+		if d.Weight != nil {
+			weight := *d.Weight
+			// Guard clause: skip jika weight <= 0 (invalid data)
+			if weight > 0 {
+				history = append(history, response.ReadingHistoryResponse{
+					ID:         d.ID,
+					DateTime:   d.CreatedAt,
+					MetricType: "berat_badan",
+					Value:      fmt.Sprintf("%.2f kg", weight),
+					Context:    nil,
+					Status:     "Normal", // Berat badan tidak punya status abnormal
+					Notes:      nil,
+				})
+			}
+		}
 
-		// Detak jantung
-		history = append(history, response.ReadingHistoryResponse{
-			ID:         d.ID,
-			DateTime:   d.CreatedAt,
-			MetricType: "detak_jantung",
-			Value:      fmt.Sprintf("%d bpm", d.HeartRate),
-			Context:    nil,
-			Status:     s.getHeartRateStatus(float64(d.HeartRate)),
-			Notes:      nil,
-		})
+		// Detak jantung - safe dereference
+		if d.HeartRate != nil {
+			heartRate := *d.HeartRate
+			history = append(history, response.ReadingHistoryResponse{
+				ID:         d.ID,
+				DateTime:   d.CreatedAt,
+				MetricType: "detak_jantung",
+				Value:      fmt.Sprintf("%d bpm", heartRate),
+				Context:    nil,
+				Status:     s.getHeartRateStatus(float64(heartRate)),
+				Notes:      nil,
+			})
+		}
 
-		// Aktivitas (jika ada)
-		if d.Activity != nil && *d.Activity != "" {
+		// Aktivitas - safe dereference dengan check empty string
+		if utils.IsNotEmptyString(d.Activity) {
+			activity := *d.Activity
 			history = append(history, response.ReadingHistoryResponse{
 				ID:         d.ID,
 				DateTime:   d.CreatedAt,
 				MetricType: "aktivitas",
-				Value:      *d.Activity,
+				Value:      activity,
 				Context:    nil,
 				Status:     "Normal",
 				Notes:      nil,
@@ -738,13 +930,16 @@ func (s *HealthDataService) GenerateReportCSV(userID uint, req *request.HealthHi
 
 	// Berat Badan
 	if historyResp.Summary.Weight != nil {
+		weightSummary := historyResp.Summary.Weight
 		writer.Write([]string{""})
 		writer.Write([]string{"BERAT BADAN"})
-		writer.Write([]string{"Rata-rata", fmt.Sprintf("%.2f kg", historyResp.Summary.Weight.AvgWeight)})
-		writer.Write([]string{"Tren", historyResp.Summary.Weight.Trend})
-		writer.Write([]string{"Persentase Perubahan", fmt.Sprintf("%.2f%%", historyResp.Summary.Weight.ChangePercent)})
-		if historyResp.Summary.Weight.BMI != nil {
-			writer.Write([]string{"BMI", fmt.Sprintf("%.2f", *historyResp.Summary.Weight.BMI)})
+		writer.Write([]string{"Rata-rata", fmt.Sprintf("%.2f kg", weightSummary.AvgWeight)})
+		writer.Write([]string{"Tren", weightSummary.Trend})
+		writer.Write([]string{"Persentase Perubahan", fmt.Sprintf("%.2f%%", weightSummary.ChangePercent)})
+		// Safe dereference untuk BMI
+		if weightSummary.BMI != nil {
+			bmi := *weightSummary.BMI
+			writer.Write([]string{"BMI", fmt.Sprintf("%.2f", bmi)})
 		}
 	}
 
@@ -829,91 +1024,108 @@ func (s *HealthDataService) GetHealthAlerts(userID uint, req *request.HealthHist
 	alerts := []response.HealthAlertResponse{} // hasilnya nanti
 
 	// ========== 1. ALERT TEKANAN DARAH ==========
-	systolicStatus := s.getBloodPressureStatus(float64(latest.Systolic), true)
-	diastolicStatus := s.getBloodPressureStatus(float64(latest.Diastolic), false)
+	// Safe dereference dengan nil check eksplisit
+	if latest.Systolic != nil && latest.Diastolic != nil {
+		systolic := *latest.Systolic
+		diastolic := *latest.Diastolic
+		systolicStatus := s.getBloodPressureStatus(float64(systolic), true)
+		diastolicStatus := s.getBloodPressureStatus(float64(diastolic), false)
 
-	if systolicStatus != "Normal" || diastolicStatus != "Normal" {
-		level := "Perhatian"
-		subtitle := "Perhatian!"
-		statusText := "Tekanan Darah Perlu Dipantau"
+		if systolicStatus != "Normal" || diastolicStatus != "Normal" {
+			level := "Perhatian"
+			subtitle := "Perhatian!"
+			statusText := "Tekanan Darah Perlu Dipantau"
 
-		if systolicStatus == "Abnormal" || diastolicStatus == "Abnormal" {
-			level = "Tinggi"
-			statusText = "Tekanan Darah Tinggi (Hipertensi)"
+			if systolicStatus == "Abnormal" || diastolicStatus == "Abnormal" {
+				level = "Tinggi"
+				statusText = "Tekanan Darah Tinggi (Hipertensi)"
+			}
+
+			value := fmt.Sprintf("%d / %d", systolic, diastolic)
+			unit := "mmHg"
+
+			alerts = append(alerts, response.HealthAlertResponse{
+				Type:       "blood_pressure",
+				Level:      level,
+				Title:      "Tekanan Darah Anda",
+				Subtitle:   subtitle,
+				Value:      value,
+				Unit:       unit,
+				StatusText: statusText,
+				RecordedAt: latest.CreatedAt,
+			})
 		}
-
-		value := fmt.Sprintf("%d / %d", latest.Systolic, latest.Diastolic)
-		unit := "mmHg"
-
-		alerts = append(alerts, response.HealthAlertResponse{
-			Type:       "blood_pressure",
-			Level:      level,
-			Title:      "Tekanan Darah Anda",
-			Subtitle:   subtitle,
-			Value:      value,
-			Unit:       unit,
-			StatusText: statusText,
-			RecordedAt: latest.CreatedAt,
-		})
 	}
 
 	// ========== 2. ALERT GULA DARAH ==========
-	bsStatus := s.getBloodSugarStatus(float64(latest.BloodSugar))
-	if bsStatus != "Normal" {
-		level := "Perhatian"
-		subtitle := "Gula Darah Tidak Normal"
-		statusText := "Gula Darah Perlu Dipantau"
+	// Safe dereference dengan nil check eksplisit
+	if latest.BloodSugar != nil {
+		bloodSugar := *latest.BloodSugar
+		bsStatus := s.getBloodSugarStatus(float64(bloodSugar))
+		if bsStatus != "Normal" {
+			level := "Perhatian"
+			subtitle := "Gula Darah Tidak Normal"
+			statusText := "Gula Darah Perlu Dipantau"
 
-		if bsStatus == "Abnormal" {
-			level = "Kritis"
-			if latest.BloodSugar < 70 {
-				subtitle = "Gula Darah Rendah"
-				statusText = "Hipoglikemia (Gula Darah Rendah)"
-			} else {
-				subtitle = "Gula Darah Tinggi"
-				statusText = "Hiperglikemia (Gula Darah Tinggi)"
+			if bsStatus == "Abnormal" {
+				level = "Kritis"
+				if bloodSugar < 70 {
+					subtitle = "Gula Darah Rendah"
+					statusText = "Hipoglikemia (Gula Darah Rendah)"
+				} else {
+					subtitle = "Gula Darah Tinggi"
+					statusText = "Hiperglikemia (Gula Darah Tinggi)"
+				}
 			}
+
+			value := fmt.Sprintf("%d", bloodSugar)
+			unit := "mg/dL"
+
+			alerts = append(alerts, response.HealthAlertResponse{
+				Type:       "blood_sugar",
+				Level:      level,
+				Title:      "Gula Darah Anda",
+				Subtitle:   subtitle,
+				Value:      value,
+				Unit:       unit,
+				StatusText: statusText,
+				RecordedAt: latest.CreatedAt,
+			})
 		}
-
-		value := fmt.Sprintf("%d", latest.BloodSugar)
-		unit := "mg/dL"
-
-		alerts = append(alerts, response.HealthAlertResponse{
-			Type:       "blood_sugar",
-			Level:      level,
-			Title:      "Gula Darah Anda",
-			Subtitle:   subtitle,
-			Value:      value,
-			Unit:       unit,
-			StatusText: statusText,
-			RecordedAt: latest.CreatedAt,
-		})
 	}
 
 	// ========== 3. ALERT PENURUNAN BERAT BADAN ==========
-	// Bandingkan berat pertama & terbaru dalam periode
-	weightDiff := first.Weight - latest.Weight // kalau turun, hasilnya positif
-	if weightDiff >= 5 { // turun >= 5 kg dalam periode
-		level := "Sedang"
-		statusText := "Penurunan Signifikan"
+	// Bandingkan berat pertama & terbaru dalam periode dengan safe dereference
+	if first.Weight != nil && latest.Weight != nil {
+		firstWeight := *first.Weight
+		latestWeight := *latest.Weight
+		
+		// Guard clause: pastikan kedua weight valid (> 0)
+		if firstWeight > 0 && latestWeight > 0 {
+			weightDiff := firstWeight - latestWeight // kalau turun, hasilnya positif
+			if weightDiff >= 5 { // turun >= 5 kg dalam periode
+				level := "Sedang"
+				statusText := "Penurunan Signifikan"
 
-		days := int(latest.CreatedAt.Sub(first.CreatedAt).Hours() / 24)
-		if days <= 0 {
-			days = 1
+				days := int(latest.CreatedAt.Sub(first.CreatedAt).Hours() / 24)
+				if days <= 0 {
+					days = 1
+				}
+				extraText := fmt.Sprintf("↓ %.1f kg dalam %d hari", roundTo2Decimals(weightDiff), days)
+
+				alerts = append(alerts, response.HealthAlertResponse{
+					Type:       "weight_loss",
+					Level:      level,
+					Title:      "Berat Badan Anda",
+					Subtitle:   "Penurunan Berat Badan",
+					Value:      fmt.Sprintf("%.2f", latestWeight),
+					Unit:       "kg",
+					Extra:      &extraText,
+					StatusText: statusText,
+					RecordedAt: latest.CreatedAt,
+				})
+			}
 		}
-		extraText := fmt.Sprintf("↓ %.1f kg dalam %d hari", roundTo2Decimals(weightDiff), days)
-
-		alerts = append(alerts, response.HealthAlertResponse{
-			Type:       "weight_loss",
-			Level:      level,
-			Title:      "Berat Badan Anda",
-			Subtitle:   "Penurunan Berat Badan",
-			Value:      fmt.Sprintf("%.2f", latest.Weight),
-			Unit:       "kg",
-			Extra:      &extraText,
-			StatusText: statusText,
-			RecordedAt: latest.CreatedAt,
-		})
 	}
 
 	return alerts, nil
@@ -926,71 +1138,81 @@ func (s *HealthDataService) generateAlertsFromHealthData(d entity.HealthData) []
 		recordedAt = time.Now()
 	}
 
-	// 1) Blood Pressure Alert
-	if d.Systolic >= 140 || d.Diastolic >= 90 {
-		level := "Tinggi"
-		statusText := "Tekanan Darah Tinggi (Hipertensi)"
-		if d.Systolic >= 160 || d.Diastolic >= 100 {
-			level = "Kritis"
-			statusText = "Tekanan Darah Sangat Tinggi"
-		}
+	// 1) Blood Pressure Alert - safe dereference dengan nil check eksplisit
+	if d.Systolic != nil && d.Diastolic != nil {
+		systolic := *d.Systolic
+		diastolic := *d.Diastolic
+		if systolic >= 140 || diastolic >= 90 {
+			level := "Tinggi"
+			statusText := "Tekanan Darah Tinggi (Hipertensi)"
+			if systolic >= 160 || diastolic >= 100 {
+				level = "Kritis"
+				statusText = "Tekanan Darah Sangat Tinggi"
+			}
 
-		alerts = append(alerts, entity.HealthAlert{
-			UserID:        d.UserID,
-			HealthDataID:  d.ID,
-			Type:          "blood_pressure",
-			Level:         level,
-			Title:         "Tekanan Darah Anda",
-			Subtitle:      "Perhatian!",
-			Value:         fmt.Sprintf("%d / %d", d.Systolic, d.Diastolic),
-			Unit:          "mmHg",
-			StatusText:    statusText,
-			RecordedAt:    recordedAt,
-		})
+			alerts = append(alerts, entity.HealthAlert{
+				UserID:        d.UserID,
+				HealthDataID:  d.ID,
+				Type:          "blood_pressure",
+				Level:         level,
+				Title:         "Tekanan Darah Anda",
+				Subtitle:      "Perhatian!",
+				Value:         fmt.Sprintf("%d / %d", systolic, diastolic),
+				Unit:          "mmHg",
+				StatusText:    statusText,
+				RecordedAt:    recordedAt,
+			})
+		}
 	}
 
-	// 2) Blood Sugar Alert
-	if d.BloodSugar >= 140 {
-		level := "Tinggi"
-		statusText := "Gula Darah Tinggi"
-		if d.BloodSugar >= 180 {
-			level = "Kritis"
-			statusText = "Hiperglikemia (Gula Darah Tinggi)"
+	// 2) Blood Sugar Alert - safe dereference dengan nil check eksplisit
+	if d.BloodSugar != nil {
+		bloodSugar := *d.BloodSugar
+		if bloodSugar >= 140 {
+			level := "Tinggi"
+			statusText := "Gula Darah Tinggi"
+			if bloodSugar >= 180 {
+				level = "Kritis"
+				statusText = "Hiperglikemia (Gula Darah Tinggi)"
+			}
+			alerts = append(alerts, entity.HealthAlert{
+				UserID:        d.UserID,
+				HealthDataID:  d.ID,
+				Type:          "blood_sugar",
+				Level:         level,
+				Title:         "Gula Darah Anda",
+				Subtitle:      "Gula Darah Tinggi",
+				Value:         fmt.Sprintf("%d", bloodSugar),
+				Unit:          "mg/dL",
+				StatusText:    statusText,
+				RecordedAt:    recordedAt,
+			})
 		}
-		alerts = append(alerts, entity.HealthAlert{
-			UserID:        d.UserID,
-			HealthDataID:  d.ID,
-			Type:          "blood_sugar",
-			Level:         level,
-			Title:         "Gula Darah Anda",
-			Subtitle:      "Gula Darah Tinggi",
-			Value:         fmt.Sprintf("%d", d.BloodSugar),
-			Unit:          "mg/dL",
-			StatusText:    statusText,
-			RecordedAt:    recordedAt,
-		})
 	}
 
-	// 3) Heart Rate Alert
-	if d.HeartRate >= 101 {
-		level := "Tinggi"
-		statusText := "Detak Jantung Tinggi"
-		if d.HeartRate >= 120 {
-			level = "Kritis"
-			statusText = "Detak Jantung Sangat Tinggi"
+	// 3) Heart Rate Alert - safe dereference dengan nil check eksplisit
+	if d.HeartRate != nil {
+		heartRate := *d.HeartRate
+		if heartRate >= 101 {
+			level := "Tinggi"
+			statusText := "Detak Jantung Tinggi"
+			if heartRate >= 120 {
+				level = "Kritis"
+				statusText = "Detak Jantung Sangat Tinggi"
+			}
+			alerts = append(alerts, entity.HealthAlert{
+				UserID:        d.UserID,
+				HealthDataID:  d.ID,
+				Type:          "heart_rate",
+				Level:         level,
+				Title:         "Detak Jantung Anda",
+				Subtitle:      "Perhatian!",
+				Value:         fmt.Sprintf("%d", heartRate),
+				Unit:          "bpm",
+				StatusText:    statusText,
+				RecordedAt:    recordedAt,
+			})
 		}
-		alerts = append(alerts, entity.HealthAlert{
-			UserID:        d.UserID,
-			HealthDataID:  d.ID,
-			Type:          "heart_rate",
-			Level:         level,
-			Title:         "Detak Jantung Anda",
-			Subtitle:      "Perhatian!",
-			Value:         fmt.Sprintf("%d", d.HeartRate),
-			Unit:          "bpm",
-			StatusText:    statusText,
-			RecordedAt:    recordedAt,
-		})
 	}
 
 	return alerts
