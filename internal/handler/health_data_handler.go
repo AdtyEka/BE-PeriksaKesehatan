@@ -278,3 +278,32 @@ func (h *HealthDataHandler) getUserIDFromToken(c *gin.Context) (uint, error) {
 	return uint(userIDFloat), nil
 }
 
+// GetHealthAlerts menangani request untuk mendapatkan daftar alert kesehatan user.
+func (h *HealthDataHandler) GetHealthAlerts(c *gin.Context) {
+	// Ambil user ID dari JWT token
+	userID, err := h.getUserIDFromToken(c)
+	if err != nil {
+		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
+		return
+	}
+
+	// Ambil filter time_range dari query (opsional)
+	var req request.HealthHistoryRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		// kalau gagal, pakai default
+		req.TimeRange = "7days"
+	}
+	if req.TimeRange == "" {
+		req.TimeRange = "7days"
+	}
+
+	// Panggil service untuk mendapatkan alert
+	alerts, err := h.healthDataService.GetHealthAlerts(userID, &req)
+	if err != nil {
+		utils.InternalServerError(c, "Gagal mengambil alert kesehatan", err.Error())
+		return
+	}
+
+	// Response sukses
+	utils.SuccessResponse(c, http.StatusOK, "Alert kesehatan berhasil diambil", alerts)
+}

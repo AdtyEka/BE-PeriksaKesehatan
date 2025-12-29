@@ -13,15 +13,17 @@ func SetupRouter(userRepo *repository.UserRepository) *gin.Engine {
 	router := gin.Default()
 
 	// Setup repository
-	healthDataRepo := repository.NewHealthDataRepository(userRepo.GetDB())
-	authRepo := repository.NewAuthRepository(userRepo.GetDB())
+healthDataRepo := repository.NewHealthDataRepository(userRepo.GetDB())
+authRepo := repository.NewAuthRepository(userRepo.GetDB())
+healthAlertRepo := repository.NewHealthAlertRepository(userRepo.GetDB()) // ✅
 
-	// Setup service
-	healthDataService := service.NewHealthDataService(healthDataRepo)
+// Setup service
+healthDataService := service.NewHealthDataService(healthDataRepo, healthAlertRepo) // ✅ ubah param
 
-	// Setup handler
-	authHandler := NewAuthHandler(userRepo)
-	healthDataHandler := NewHealthDataHandler(healthDataService, authRepo)
+// Setup handler
+authHandler := NewAuthHandler(userRepo)
+healthDataHandler := NewHealthDataHandler(healthDataService, authRepo)
+
 
 	// API Routes
 	api := router.Group("/api")
@@ -41,6 +43,8 @@ func SetupRouter(userRepo *repository.UserRepository) *gin.Engine {
 			health.GET("/data", healthDataHandler.GetHealthDataByUserID)
 			health.GET("/history", healthDataHandler.GetHealthHistory)                    // Endpoint riwayat kesehatan
 			health.GET("/history/download", healthDataHandler.DownloadHealthReport)       // Endpoint download laporan
+			health.GET("/alerts", healthDataHandler.GetHealthAlerts)
+
 		}
 	}
 

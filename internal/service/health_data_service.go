@@ -16,17 +16,21 @@ import (
 	"time"
 )
 
-// HealthDataService menangani business logic untuk data kesehatan
 type HealthDataService struct {
-	healthDataRepo *repository.HealthDataRepository
+	healthDataRepo  *repository.HealthDataRepository
+	healthAlertRepo *repository.HealthAlertRepository
 }
 
-// NewHealthDataService membuat instance baru dari HealthDataService
-func NewHealthDataService(healthDataRepo *repository.HealthDataRepository) *HealthDataService {
+func NewHealthDataService(
+	healthDataRepo *repository.HealthDataRepository,
+	healthAlertRepo *repository.HealthAlertRepository,
+) *HealthDataService {
 	return &HealthDataService{
-		healthDataRepo: healthDataRepo,
+		healthDataRepo:  healthDataRepo,
+		healthAlertRepo: healthAlertRepo,
 	}
 }
+
 
 // ValidateHealthData melakukan validasi range nilai data kesehatan
 func (s *HealthDataService) ValidateHealthData(req *request.HealthDataRequest) error {
@@ -58,14 +62,13 @@ func (s *HealthDataService) ValidateHealthData(req *request.HealthDataRequest) e
 	return nil
 }
 
-// CreateHealthData membuat data kesehatan baru dengan validasi
 func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDataRequest) (*response.HealthDataResponse, error) {
-	// Validasi data
+	// 1) Validasi data
 	if err := s.ValidateHealthData(req); err != nil {
 		return nil, err
 	}
 
-	// Buat entity dari request
+	// 2) Bentuk entity dari request
 	healthData := &entity.HealthData{
 		UserID:     userID,
 		Systolic:   req.Systolic,
@@ -76,12 +79,20 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 		Activity:   req.Activity,
 	}
 
-	// Simpan ke database
+	// 3) Simpan ke database dulu (biar dapat ID & CreatedAt)
 	if err := s.healthDataRepo.CreateHealthData(healthData); err != nil {
 		return nil, err
 	}
 
-	// Buat response
+	// 4) Generate alert dari data yang sudah tersimpan
+	alerts := s.generateAlertsFromHealthData(*healthData)
+
+	// 5) Simpan alert ke DB (kalau gagal, data utama tetap aman)
+	if len(alerts) > 0 {
+		_ = s.healthAlertRepo.SaveMany(alerts)
+	}
+
+	// 6) Buat response
 	resp := &response.HealthDataResponse{
 		ID:         healthData.ID,
 		UserID:     healthData.UserID,
@@ -787,4 +798,202 @@ func (s *HealthDataService) GenerateReportJSON(userID uint, req *request.HealthH
 
 	return &buf, filename, nil
 }
+
+// GetHealthAlerts membuat daftar alert kesehatan untuk ditampilkan di UI.
+func (s *HealthDataService) GetHealthAlerts(userID uint, req *request.HealthHistoryRequest) ([]response.HealthAlertResponse, error) {
+	// Tentukan rentang waktu (pakai logika yang sama seperti riwayat)
+	startDate, endDate, err := s.parseTimeRange(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ambil data kesehatan user dalam rentang waktu
+	healthDataList, err := s.healthDataRepo.GetHealthDataByUserIDWithFilter(userID, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	if len(healthDataList) == 0 {
+		// Tidak ada data, tidak ada alert
+		return []response.HealthAlertResponse{}, nil
+	}
+
+	// Urutkan data berdasarkan waktu (paling lama → paling baru)
+	sorted := make([]entity.HealthData, len(healthDataList))
+	copy(sorted, healthDataList)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].CreatedAt.Before(sorted[j].CreatedAt)
+	})
+
+	first := sorted[0]                       // data paling awal di periode ini
+	latest := sorted[len(sorted)-1]          // data terbaru
+	alerts := []response.HealthAlertResponse{} // hasilnya nanti
+
+	// ========== 1. ALERT TEKANAN DARAH ==========
+	systolicStatus := s.getBloodPressureStatus(float64(latest.Systolic), true)
+	diastolicStatus := s.getBloodPressureStatus(float64(latest.Diastolic), false)
+
+	if systolicStatus != "Normal" || diastolicStatus != "Normal" {
+		level := "Perhatian"
+		subtitle := "Perhatian!"
+		statusText := "Tekanan Darah Perlu Dipantau"
+
+		if systolicStatus == "Abnormal" || diastolicStatus == "Abnormal" {
+			level = "Tinggi"
+			statusText = "Tekanan Darah Tinggi (Hipertensi)"
+		}
+
+		value := fmt.Sprintf("%d / %d", latest.Systolic, latest.Diastolic)
+		unit := "mmHg"
+
+		alerts = append(alerts, response.HealthAlertResponse{
+			Type:       "blood_pressure",
+			Level:      level,
+			Title:      "Tekanan Darah Anda",
+			Subtitle:   subtitle,
+			Value:      value,
+			Unit:       unit,
+			StatusText: statusText,
+			RecordedAt: latest.CreatedAt,
+		})
+	}
+
+	// ========== 2. ALERT GULA DARAH ==========
+	bsStatus := s.getBloodSugarStatus(float64(latest.BloodSugar))
+	if bsStatus != "Normal" {
+		level := "Perhatian"
+		subtitle := "Gula Darah Tidak Normal"
+		statusText := "Gula Darah Perlu Dipantau"
+
+		if bsStatus == "Abnormal" {
+			level = "Kritis"
+			if latest.BloodSugar < 70 {
+				subtitle = "Gula Darah Rendah"
+				statusText = "Hipoglikemia (Gula Darah Rendah)"
+			} else {
+				subtitle = "Gula Darah Tinggi"
+				statusText = "Hiperglikemia (Gula Darah Tinggi)"
+			}
+		}
+
+		value := fmt.Sprintf("%d", latest.BloodSugar)
+		unit := "mg/dL"
+
+		alerts = append(alerts, response.HealthAlertResponse{
+			Type:       "blood_sugar",
+			Level:      level,
+			Title:      "Gula Darah Anda",
+			Subtitle:   subtitle,
+			Value:      value,
+			Unit:       unit,
+			StatusText: statusText,
+			RecordedAt: latest.CreatedAt,
+		})
+	}
+
+	// ========== 3. ALERT PENURUNAN BERAT BADAN ==========
+	// Bandingkan berat pertama & terbaru dalam periode
+	weightDiff := first.Weight - latest.Weight // kalau turun, hasilnya positif
+	if weightDiff >= 5 { // turun >= 5 kg dalam periode
+		level := "Sedang"
+		statusText := "Penurunan Signifikan"
+
+		days := int(latest.CreatedAt.Sub(first.CreatedAt).Hours() / 24)
+		if days <= 0 {
+			days = 1
+		}
+		extraText := fmt.Sprintf("↓ %.1f kg dalam %d hari", roundTo2Decimals(weightDiff), days)
+
+		alerts = append(alerts, response.HealthAlertResponse{
+			Type:       "weight_loss",
+			Level:      level,
+			Title:      "Berat Badan Anda",
+			Subtitle:   "Penurunan Berat Badan",
+			Value:      fmt.Sprintf("%.2f", latest.Weight),
+			Unit:       "kg",
+			Extra:      &extraText,
+			StatusText: statusText,
+			RecordedAt: latest.CreatedAt,
+		})
+	}
+
+	return alerts, nil
+}
+
+func (s *HealthDataService) generateAlertsFromHealthData(d entity.HealthData) []entity.HealthAlert {
+	var alerts []entity.HealthAlert
+	recordedAt := d.CreatedAt
+	if recordedAt.IsZero() {
+		recordedAt = time.Now()
+	}
+
+	// 1) Blood Pressure Alert
+	if d.Systolic >= 140 || d.Diastolic >= 90 {
+		level := "Tinggi"
+		statusText := "Tekanan Darah Tinggi (Hipertensi)"
+		if d.Systolic >= 160 || d.Diastolic >= 100 {
+			level = "Kritis"
+			statusText = "Tekanan Darah Sangat Tinggi"
+		}
+
+		alerts = append(alerts, entity.HealthAlert{
+			UserID:        d.UserID,
+			HealthDataID:  d.ID,
+			Type:          "blood_pressure",
+			Level:         level,
+			Title:         "Tekanan Darah Anda",
+			Subtitle:      "Perhatian!",
+			Value:         fmt.Sprintf("%d / %d", d.Systolic, d.Diastolic),
+			Unit:          "mmHg",
+			StatusText:    statusText,
+			RecordedAt:    recordedAt,
+		})
+	}
+
+	// 2) Blood Sugar Alert
+	if d.BloodSugar >= 140 {
+		level := "Tinggi"
+		statusText := "Gula Darah Tinggi"
+		if d.BloodSugar >= 180 {
+			level = "Kritis"
+			statusText = "Hiperglikemia (Gula Darah Tinggi)"
+		}
+		alerts = append(alerts, entity.HealthAlert{
+			UserID:        d.UserID,
+			HealthDataID:  d.ID,
+			Type:          "blood_sugar",
+			Level:         level,
+			Title:         "Gula Darah Anda",
+			Subtitle:      "Gula Darah Tinggi",
+			Value:         fmt.Sprintf("%d", d.BloodSugar),
+			Unit:          "mg/dL",
+			StatusText:    statusText,
+			RecordedAt:    recordedAt,
+		})
+	}
+
+	// 3) Heart Rate Alert
+	if d.HeartRate >= 101 {
+		level := "Tinggi"
+		statusText := "Detak Jantung Tinggi"
+		if d.HeartRate >= 120 {
+			level = "Kritis"
+			statusText = "Detak Jantung Sangat Tinggi"
+		}
+		alerts = append(alerts, entity.HealthAlert{
+			UserID:        d.UserID,
+			HealthDataID:  d.ID,
+			Type:          "heart_rate",
+			Level:         level,
+			Title:         "Detak Jantung Anda",
+			Subtitle:      "Perhatian!",
+			Value:         fmt.Sprintf("%d", d.HeartRate),
+			Unit:          "bpm",
+			StatusText:    statusText,
+			RecordedAt:    recordedAt,
+		})
+	}
+
+	return alerts
+}
+
 
