@@ -28,10 +28,10 @@ func (r *EducationalVideoRepository) CreateEducationalVideo(video *entity.Educat
 	return nil
 }
 
-// GetEducationalVideosByHealthCondition mengambil semua video berdasarkan kondisi kesehatan
-func (r *EducationalVideoRepository) GetEducationalVideosByHealthCondition(healthCondition string) ([]entity.EducationalVideo, error) {
+// GetEducationalVideosByCategoryID mengambil semua video berdasarkan kategori ID
+func (r *EducationalVideoRepository) GetEducationalVideosByCategoryID(categoryID uint) ([]entity.EducationalVideo, error) {
 	var videos []entity.EducationalVideo
-	result := r.db.Where("health_condition = ?", healthCondition).
+	result := r.db.Where("category_id = ?", categoryID).
 		Order("created_at DESC").
 		Find(&videos)
 	if result.Error != nil {
@@ -53,13 +53,22 @@ func (r *EducationalVideoRepository) GetEducationalVideoByID(id uint) (*entity.E
 	return &video, nil
 }
 
-// GetAllEducationalVideos mengambil semua video edukasi
-func (r *EducationalVideoRepository) GetAllEducationalVideos() ([]entity.EducationalVideo, error) {
+// GetAllEducationalVideosByCategoryIDs mengambil semua video berdasarkan list kategori ID
+func (r *EducationalVideoRepository) GetAllEducationalVideosByCategoryIDs(categoryIDs []uint) (map[uint][]entity.EducationalVideo, error) {
 	var videos []entity.EducationalVideo
-	result := r.db.Order("created_at DESC").Find(&videos)
+	result := r.db.Where("category_id IN ?", categoryIDs).
+		Order("category_id ASC, created_at DESC").
+		Find(&videos)
 	if result.Error != nil {
 		return nil, result.Error
 	}
-	return videos, nil
+
+	// Group videos by category_id
+	videosByCategory := make(map[uint][]entity.EducationalVideo)
+	for _, video := range videos {
+		videosByCategory[video.CategoryID] = append(videosByCategory[video.CategoryID], video)
+	}
+
+	return videosByCategory, nil
 }
 

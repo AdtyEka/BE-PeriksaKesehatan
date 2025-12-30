@@ -16,11 +16,12 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 	authRepo := repository.NewAuthRepository(userRepo.GetDB())
 	healthAlertRepo := repository.NewHealthAlertRepository(userRepo.GetDB())
 	educationalVideoRepo := repository.NewEducationalVideoRepository(userRepo.GetDB())
+	categoryRepo := repository.NewCategoryRepository(userRepo.GetDB())
 	healthTargetRepo := repository.NewHealthTargetRepository(userRepo.GetDB())
 
 	healthDataService := service.NewHealthDataService(healthDataRepo)
 	healthAlertService := service.NewHealthAlertService(healthAlertRepo, healthDataRepo)
-	educationalVideoService := service.NewEducationalVideoService(educationalVideoRepo)
+	educationalVideoService := service.NewEducationalVideoService(educationalVideoRepo, categoryRepo)
 	profileService := service.NewProfileService(userRepo, healthDataRepo, healthTargetRepo)
 
 	// Initialize middleware
@@ -56,7 +57,8 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 		education := api.Group("/education")
 		{
 			education.POST("/add-educational-video", educationalVideoHandler.AddEducationalVideo)
-			education.GET("/get-educational-videos/:health_condition", educationalVideoHandler.GetEducationalVideos)
+			education.GET("/get-educational-videos", educationalVideoHandler.GetAllEducationalVideos)
+			education.GET("/get-educational-videos/:id", educationalVideoHandler.GetEducationalVideosByID)
 		}
 
 		profile := api.Group("/profile")

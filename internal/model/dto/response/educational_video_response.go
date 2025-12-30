@@ -6,17 +6,30 @@ type EducationalVideoItem struct {
 	URL   string `json:"url"`
 }
 
-// GetEducationalVideosResponse adalah response untuk endpoint get-educational-videos
-type GetEducationalVideosResponse struct {
-	HealthCondition string                 `json:"health_condition"`
-	Videos          []EducationalVideoItem `json:"videos"`
+// CategoryWithVideosResponse adalah response untuk kategori beserta videonya
+type CategoryWithVideosResponse struct {
+	ID       uint                 `json:"id"`
+	Kategori string              `json:"kategori"`
+	Videos   []EducationalVideoItem `json:"videos"`
+}
+
+// GetEducationalVideosByIDResponse adalah response untuk endpoint get-educational-videos/{id}
+type GetEducationalVideosByIDResponse struct {
+	ID       uint                 `json:"id"`
+	Kategori string              `json:"kategori"`
+	Videos   []EducationalVideoItem `json:"videos"`
+}
+
+// GetAllEducationalVideosResponse adalah response untuk endpoint get-educational-videos
+type GetAllEducationalVideosResponse struct {
+	Data []CategoryWithVideosResponse `json:"data"`
 }
 
 // AddEducationalVideoResponse adalah response untuk endpoint add-educational-video
 type AddEducationalVideoResponse struct {
-	ID              uint   `json:"id"`
-	VideoTitle      string `json:"video_title"`
-	VideoURL        string `json:"video_url"`
-	HealthCondition string `json:"health_condition"`
+	ID         uint   `json:"id"`
+	VideoTitle string `json:"video_title"`
+	VideoURL   string `json:"video_url"`
+	CategoryID uint   `json:"category_id"`
 }
 

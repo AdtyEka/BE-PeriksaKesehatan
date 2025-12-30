@@ -4,6 +4,7 @@ import (
 	"BE-PeriksaKesehatan/config"
 	"BE-PeriksaKesehatan/internal/model/entity"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -56,6 +57,7 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 		&entity.HealthData{},
 		&entity.BlacklistedToken{},
 		&entity.HealthAlert{},
+		&entity.Category{},
 		&entity.EducationalVideo{},
 		&entity.HealthTarget{},
 	)
@@ -63,6 +65,20 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 		log.Printf("Warning: Gagal melakukan auto-migrate: %v", err)
 	} else {
 		log.Println("Info: Auto-migrate berhasil!")
+	}
+
+	// Seed default categories
+	if err := seedDefaultCategories(db); err != nil {
+		log.Printf("Warning: Gagal melakukan seed default categories: %v", err)
+	} else {
+		log.Println("Info: Seed default categories berhasil!")
+	}
+
+	// Migrate educational_videos table: add category_id column
+	if err := migrateEducationalVideosTable(db); err != nil {
+		log.Printf("Warning: Gagal melakukan migration educational_videos: %v", err)
+	} else {
+		log.Println("Info: Migration educational_videos berhasil!")
 	}
 
 	if err := migrateHealthDataNullable(db); err != nil {
@@ -157,5 +173,89 @@ func migrateHealthDataNullable(db *gorm.DB) error {
 
 func contains(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
+
+// migrateEducationalVideosTable menambahkan kolom category_id ke tabel educational_videos
+// Migration ini idempotent dan aman untuk Supabase/PostgreSQL.
+func migrateEducationalVideosTable(db *gorm.DB) error {
+	migrator := db.Migrator()
+
+	if !migrator.HasTable(&entity.EducationalVideo{}) {
+		log.Println("Info: Tabel educational_videos belum ada, akan dibuat oleh AutoMigrate")
+		return nil
+	}
+
+	// Cek apakah kolom category_id sudah ada
+	if migrator.HasColumn(&entity.EducationalVideo{}, "category_id") {
+		log.Println("Info: Kolom category_id sudah ada di tabel educational_videos, skip migration")
+		return nil
+	}
+
+	log.Println("Info: Menambahkan kolom category_id ke tabel educational_videos...")
+
+	// Tambahkan kolom category_id (nullable dulu untuk backward compatibility)
+	alterSQL := `
+		ALTER TABLE educational_videos 
+		ADD COLUMN category_id INTEGER
+	`
+
+	if err := db.Exec(alterSQL).Error; err != nil {
+		if contains(err.Error(), "already exists") || contains(err.Error(), "duplicate") {
+			log.Println("Info: Kolom category_id sudah ada")
+			return nil
+		}
+		return fmt.Errorf("gagal menambahkan kolom category_id: %v", err)
+	}
+
+	log.Println("Info: Kolom category_id berhasil ditambahkan")
+
+	// Tambahkan index untuk category_id
+	indexSQL := `
+		CREATE INDEX IF NOT EXISTS idx_educational_videos_category_id 
+		ON educational_videos(category_id)
+	`
+
+	if err := db.Exec(indexSQL).Error; err != nil {
+		log.Printf("Warning: Gagal menambahkan index untuk category_id: %v", err)
+		// Tidak return error, karena index bukan critical
+	} else {
+		log.Println("Info: Index untuk category_id berhasil ditambahkan")
+	}
+
+	// Catatan: Foreign key constraint bisa ditambahkan nanti setelah memastikan semua data valid
+	// Untuk sekarang, kita biarkan nullable dulu agar tidak error jika ada data lama
+	log.Println("Info: Kolom category_id ditambahkan (nullable dengan index). Set NOT NULL dan foreign key bisa dilakukan setelah data terisi.")
+
+	return nil
+}
+
+// seedDefaultCategories melakukan seed kategori default jika belum ada
+func seedDefaultCategories(db *gorm.DB) error {
+	defaultCategories := []entity.Category{
+		{Kategori: "Diabetes"},
+		{Kategori: "Hipertensi"},
+		{Kategori: "Jantung"},
+	}
+
+	for _, category := range defaultCategories {
+		var existingCategory entity.Category
+		result := db.Where("kategori = ?", category.Kategori).First(&existingCategory)
+		
+		// Jika kategori belum ada, insert
+		if result.Error != nil {
+			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+				if err := db.Create(&category).Error; err != nil {
+					return fmt.Errorf("gagal membuat kategori %s: %v", category.Kategori, err)
+				}
+				log.Printf("Info: Kategori %s berhasil dibuat", category.Kategori)
+			} else {
+				return fmt.Errorf("error saat mengecek kategori %s: %v", category.Kategori, result.Error)
+			}
+		} else {
+			log.Printf("Info: Kategori %s sudah ada, skip", category.Kategori)
+		}
+	}
+
+	return nil
 }
 

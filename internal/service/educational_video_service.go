@@ -7,18 +7,21 @@ import (
 	"BE-PeriksaKesehatan/internal/repository"
 	"errors"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
 // EducationalVideoService menangani business logic untuk educational videos
 type EducationalVideoService struct {
 	educationalVideoRepo *repository.EducationalVideoRepository
+	categoryRepo         *repository.CategoryRepository
 }
 
 // NewEducationalVideoService membuat instance baru dari EducationalVideoService
-func NewEducationalVideoService(educationalVideoRepo *repository.EducationalVideoRepository) *EducationalVideoService {
+func NewEducationalVideoService(educationalVideoRepo *repository.EducationalVideoRepository, categoryRepo *repository.CategoryRepository) *EducationalVideoService {
 	return &EducationalVideoService{
 		educationalVideoRepo: educationalVideoRepo,
+		categoryRepo:         categoryRepo,
 	}
 }
 
@@ -29,11 +32,18 @@ func (s *EducationalVideoService) AddEducationalVideo(req *request.EducationalVi
 		return nil, err
 	}
 
+	// Validasi kategori exists
+	category, err := s.categoryRepo.GetCategoryByID(req.CategoryID)
+	if err != nil {
+		return nil, errors.New("kategori tidak ditemukan")
+	}
+
 	// Buat entity
 	video := &entity.EducationalVideo{
 		VideoTitle:      strings.TrimSpace(req.VideoTitle),
 		VideoURL:        strings.TrimSpace(req.VideoURL),
-		HealthCondition: strings.TrimSpace(req.HealthCondition),
+		CategoryID:      req.CategoryID,
+		HealthCondition: category.Kategori,
 	}
 
 	// Simpan ke database
@@ -43,25 +53,78 @@ func (s *EducationalVideoService) AddEducationalVideo(req *request.EducationalVi
 
 	// Buat response
 	resp := &response.AddEducationalVideoResponse{
-		ID:              video.ID,
-		VideoTitle:      video.VideoTitle,
-		VideoURL:        video.VideoURL,
-		HealthCondition: video.HealthCondition,
+		ID:         video.ID,
+		VideoTitle: video.VideoTitle,
+		VideoURL:   video.VideoURL,
+		CategoryID: video.CategoryID,
 	}
 
 	return resp, nil
 }
 
-// GetEducationalVideosByHealthCondition mengambil video berdasarkan kondisi kesehatan
-func (s *EducationalVideoService) GetEducationalVideosByHealthCondition(healthCondition string) (*response.GetEducationalVideosResponse, error) {
-	// Validasi health condition tidak kosong
-	healthCondition = strings.TrimSpace(healthCondition)
-	if healthCondition == "" {
-		return nil, errors.New("health_condition tidak boleh kosong")
+// GetAllEducationalVideos mengambil semua kategori beserta videonya
+func (s *EducationalVideoService) GetAllEducationalVideos() (*response.GetAllEducationalVideosResponse, error) {
+	// Ambil semua kategori
+	categories, err := s.categoryRepo.GetAllCategories()
+	if err != nil {
+		return nil, err
 	}
 
-	// Ambil video dari database
-	videos, err := s.educationalVideoRepo.GetEducationalVideosByHealthCondition(healthCondition)
+	// Ambil semua category IDs
+	categoryIDs := make([]uint, 0, len(categories))
+	for _, category := range categories {
+		categoryIDs = append(categoryIDs, category.ID)
+	}
+
+	// Ambil semua videos berdasarkan category IDs (efisien, tidak N+1)
+	videosByCategory, err := s.educationalVideoRepo.GetAllEducationalVideosByCategoryIDs(categoryIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build response
+	result := make([]response.CategoryWithVideosResponse, 0, len(categories))
+	for _, category := range categories {
+		videos := videosByCategory[category.ID]
+		videoItems := make([]response.EducationalVideoItem, 0, len(videos))
+		for _, video := range videos {
+			videoItems = append(videoItems, response.EducationalVideoItem{
+				Title: video.VideoTitle,
+				URL:   video.VideoURL,
+			})
+		}
+
+		result = append(result, response.CategoryWithVideosResponse{
+			ID:       category.ID,
+			Kategori: category.Kategori,
+			Videos:   videoItems,
+		})
+	}
+
+	return &response.GetAllEducationalVideosResponse{
+		Data: result,
+	}, nil
+}
+
+// GetEducationalVideosByCategoryID mengambil video berdasarkan kategori ID
+func (s *EducationalVideoService) GetEducationalVideosByCategoryID(categoryIDStr string) (*response.GetEducationalVideosByIDResponse, error) {
+	// Validasi dan parse ID
+	categoryID, err := strconv.ParseUint(categoryIDStr, 10, 32)
+	if err != nil {
+		return nil, errors.New("ID kategori tidak valid")
+	}
+
+	// Ambil kategori
+	category, err := s.categoryRepo.GetCategoryByID(uint(categoryID))
+	if err != nil {
+		if err.Error() == "kategori tidak ditemukan" {
+			return nil, err
+		}
+		return nil, err
+	}
+
+	// Ambil videos berdasarkan kategori ID
+	videos, err := s.educationalVideoRepo.GetEducationalVideosByCategoryID(uint(categoryID))
 	if err != nil {
 		return nil, err
 	}
@@ -75,9 +138,10 @@ func (s *EducationalVideoService) GetEducationalVideosByHealthCondition(healthCo
 		})
 	}
 
-	return &response.GetEducationalVideosResponse{
-		HealthCondition: healthCondition,
-		Videos:          videoItems,
+	return &response.GetEducationalVideosByIDResponse{
+		ID:       category.ID,
+		Kategori: category.Kategori,
+		Videos:   videoItems,
 	}, nil
 }
 
@@ -101,10 +165,9 @@ func (s *EducationalVideoService) validateVideoRequest(req *request.EducationalV
 		return errors.New("video_url harus berupa URL yang valid")
 	}
 
-	// Validasi health condition tidak kosong
-	healthCondition := strings.TrimSpace(req.HealthCondition)
-	if healthCondition == "" {
-		return errors.New("health_condition tidak boleh kosong")
+	// Validasi category_id tidak kosong
+	if req.CategoryID == 0 {
+		return errors.New("category_id tidak boleh kosong")
 	}
 
 	return nil
