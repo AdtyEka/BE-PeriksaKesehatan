@@ -100,3 +100,41 @@ func (r *HealthDataRepository) GetLatestHealthDataByUserID(userID uint) (*entity
 	return &healthData, nil
 }
 
+// UpdateHealthData melakukan partial update pada health data
+// Hanya field yang tidak nil yang akan di-update
+// Field yang nil akan diabaikan (tidak di-overwrite dengan NULL)
+func (r *HealthDataRepository) UpdateHealthData(healthData *entity.HealthData) error {
+	// Buat map untuk menyimpan field yang akan di-update
+	updates := make(map[string]interface{})
+	
+	// Hanya tambahkan field yang tidak nil ke updates
+	if healthData.Systolic != nil {
+		updates["systolic"] = *healthData.Systolic
+	}
+	if healthData.Diastolic != nil {
+		updates["diastolic"] = *healthData.Diastolic
+	}
+	if healthData.BloodSugar != nil {
+		updates["blood_sugar"] = *healthData.BloodSugar
+	}
+	if healthData.Weight != nil {
+		updates["weight"] = *healthData.Weight
+	}
+	if healthData.HeartRate != nil {
+		updates["heart_rate"] = *healthData.HeartRate
+	}
+	if healthData.Activity != nil {
+		updates["activity"] = *healthData.Activity
+	}
+	
+	// Update hanya jika ada field yang akan di-update
+	if len(updates) > 0 {
+		result := r.db.Model(healthData).Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+	}
+	
+	return nil
+}
+

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"BE-PeriksaKesehatan/internal/model/dto/request"
+	"BE-PeriksaKesehatan/internal/model/dto/response"
 	"BE-PeriksaKesehatan/internal/repository"
 	"BE-PeriksaKesehatan/internal/service"
 	"BE-PeriksaKesehatan/pkg/middleware"
@@ -66,7 +67,8 @@ func (h *HealthDataHandler) CreateHealthData(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusCreated, "Data kesehatan berhasil disimpan", resp)
 }
 
-// GetHealthDataByUserID menangani request untuk mendapatkan riwayat data kesehatan user
+// GetHealthDataByUserID menangani request untuk mendapatkan data kesehatan terbaru user
+// Mengembalikan 1 record terbaru (inkremental) yang berisi semua data kesehatan user
 func (h *HealthDataHandler) GetHealthDataByUserID(c *gin.Context) {
 	// Ambil user ID dari context (sudah divalidasi oleh middleware)
 	userID, ok := middleware.GetUserIDFromContext(c)
@@ -75,15 +77,34 @@ func (h *HealthDataHandler) GetHealthDataByUserID(c *gin.Context) {
 		return
 	}
 
-	// Panggil service untuk mendapatkan data kesehatan
-	healthDataList, err := h.healthDataService.GetHealthDataByUserID(userID)
+	// Panggil service untuk mendapatkan data kesehatan terbaru
+	healthData, err := h.healthDataService.GetHealthDataByUserID(userID)
 	if err != nil {
 		utils.InternalServerError(c, "Gagal mengambil data kesehatan", err.Error())
 		return
 	}
 
+	// Jika tidak ada data, kembalikan null dengan pesan yang jelas
+	if healthData == nil {
+		utils.SuccessResponse(c, http.StatusOK, "Belum ada data kesehatan", nil)
+		return
+	}
+
+	// Build response dari entity ke response DTO
+	resp := &response.HealthDataResponse{
+		ID:         healthData.ID,
+		UserID:     healthData.UserID,
+		Systolic:   healthData.Systolic,
+		Diastolic:  healthData.Diastolic,
+		BloodSugar: healthData.BloodSugar,
+		Weight:     healthData.Weight,
+		HeartRate:  healthData.HeartRate,
+		Activity:   healthData.Activity,
+		CreatedAt:  healthData.CreatedAt,
+	}
+
 	// Response sukses
-	utils.SuccessResponse(c, http.StatusOK, "Data kesehatan berhasil diambil", healthDataList)
+	utils.SuccessResponse(c, http.StatusOK, "Data kesehatan berhasil diambil", resp)
 }
 
 // GetHealthHistory menangani request untuk mendapatkan riwayat kesehatan dengan filter
