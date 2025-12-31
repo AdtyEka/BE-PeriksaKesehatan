@@ -29,4 +29,15 @@ type UpdateSettingsRequest struct {
 	Language            *string `json:"language" binding:"omitempty,oneof=id en"`
 }
 
+// CreateProfileRequest untuk POST /api/profile (multipart/form-data)
+// Note: File upload tidak bisa di-validate dengan binding tag, harus divalidasi manual di handler
+type CreateProfileRequest struct {
+	Name   string  `form:"name" binding:"required,min=1,max=100"`
+	Email  string  `form:"email" binding:"required,email"`
+	Weight *float64 `form:"weight"` // optional, akan divalidasi manual
+	Height *int    `form:"height"`  // optional, akan divalidasi manual
+	Age    *int    `form:"age"`     // optional, akan divalidasi manual
+	// Photo akan di-handle sebagai *multipart.FileHeader di handler
+}
+
 

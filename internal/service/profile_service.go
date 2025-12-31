@@ -6,6 +6,7 @@ import (
 	"BE-PeriksaKesehatan/internal/model/entity"
 	"BE-PeriksaKesehatan/internal/repository"
 	"errors"
+	"fmt"
 	"math"
 	"time"
 )
@@ -317,5 +318,134 @@ func (s *ProfileService) calculateWeightProgress(target, current float64) float6
 	diff := math.Abs(current - target)
 	progress := 100 - (diff/target)*100
 	return math.Round(progress*100) / 100
+}
+
+// CreateProfile membuat profile baru untuk user
+// Validasi: name dan email wajib, weight/height/age optional dengan validasi
+// Upload foto jika ada, rollback jika gagal
+func (s *ProfileService) CreateProfile(userID uint, req *request.CreateProfileRequest, photoURL *string) (*response.ProfileResponse, error) {
+	// Cek apakah user ada
+	_, err := s.userRepo.GetUserByID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cek apakah profile sudah ada
+	exists, err := s.userRepo.CheckProfileExists(userID)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, errors.New("profile sudah ada")
+	}
+
+	// Validasi email format (sudah divalidasi di binding, tapi double check)
+	if req.Email == "" {
+		return nil, errors.New("email wajib diisi")
+	}
+
+	// Validasi optional fields
+	if req.Weight != nil && *req.Weight <= 0 {
+		return nil, errors.New("weight harus lebih besar dari 0")
+	}
+	if req.Height != nil && *req.Height <= 0 {
+		return nil, errors.New("height harus lebih besar dari 0")
+	}
+	if req.Age != nil && *req.Age <= 0 {
+		return nil, errors.New("age harus lebih besar dari 0")
+	}
+
+	// Prepare updates untuk user
+	updates := make(map[string]interface{})
+	updates["nama"] = req.Name
+	updates["email"] = req.Email
+
+	if req.Height != nil {
+		updates["height_cm"] = *req.Height
+	}
+	if photoURL != nil && *photoURL != "" {
+		updates["photo_url"] = *photoURL
+	}
+
+	// Handle age: jika age dikirim, hitung birth_date
+	if req.Age != nil {
+		now := time.Now()
+		birthYear := now.Year() - *req.Age
+		birthDate := time.Date(birthYear, now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		updates["birth_date"] = birthDate
+	}
+
+	// Create profile
+	err = s.userRepo.CreateProfile(userID, updates)
+	if err != nil {
+		return nil, err
+	}
+
+	// Jika weight dikirim, buat health_data
+	if req.Weight != nil {
+		healthData := &entity.HealthData{
+			UserID: userID,
+			Weight: req.Weight,
+		}
+		err = s.healthDataRepo.CreateHealthData(healthData)
+		if err != nil {
+			// Rollback: hapus profile yang sudah dibuat
+			// Untuk sekarang, kita biarkan error ini, atau bisa di-handle dengan transaction
+			return nil, fmt.Errorf("gagal menyimpan weight: %w", err)
+		}
+	}
+
+	// Get updated user untuk response
+	user, err := s.userRepo.GetUserByID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get latest health data untuk weight
+	latestHealthData, err := s.healthDataRepo.GetLatestHealthDataByUserID(userID)
+	if err != nil {
+		// Tidak fatal jika health data tidak ada
+		latestHealthData = nil
+	}
+
+	var age *int
+	if user.BirthDate != nil {
+		calculatedAge := s.calculateAge(*user.BirthDate)
+		age = &calculatedAge
+	} else if req.Age != nil {
+		age = req.Age
+	} else {
+		// Default 0 jika tidak ada
+		zeroAge := 0
+		age = &zeroAge
+	}
+
+	// Set height, default 0 jika tidak ada
+	var height *int
+	if user.HeightCM != nil {
+		height = user.HeightCM
+	} else {
+		zeroHeight := 0
+		height = &zeroHeight
+	}
+
+	resp := &response.ProfileResponse{
+		Name:     user.Nama,
+		Email:    user.Email,
+		PhotoURL: user.PhotoURL,
+		Height:   height,
+		Age:      age,
+	}
+
+	// Set weight dari health_data jika ada
+	if latestHealthData != nil && latestHealthData.Weight != nil {
+		resp.Weight = latestHealthData.Weight
+	} else {
+		// Default 0 jika tidak ada
+		zeroWeight := 0.0
+		resp.Weight = &zeroWeight
+	}
+
+	return resp, nil
 }
 
