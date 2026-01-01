@@ -7,7 +7,6 @@ import (
 	"BE-PeriksaKesehatan/internal/service"
 	"BE-PeriksaKesehatan/pkg/middleware"
 	"BE-PeriksaKesehatan/pkg/utils"
-	"bytes"
 	"fmt"
 	"net/http"
 	"strings"
@@ -147,19 +146,12 @@ func (h *HealthDataHandler) GetHealthHistory(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "Riwayat kesehatan berhasil diambil", resp)
 }
 
-// DownloadHealthReport menangani request untuk mengunduh laporan riwayat kesehatan
+// DownloadHealthReport menangani request untuk mengunduh laporan riwayat kesehatan dalam format PDF
 func (h *HealthDataHandler) DownloadHealthReport(c *gin.Context) {
 	// Ambil user ID dari context (sudah divalidasi oleh middleware)
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
 		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
-		return
-	}
-
-	// Ambil format dari query parameter (default: csv)
-	format := c.DefaultQuery("format", "csv")
-	if format != "csv" && format != "json" {
-		utils.BadRequest(c, "Format tidak valid", "Format harus 'csv' atau 'json'")
 		return
 	}
 
@@ -175,40 +167,22 @@ func (h *HealthDataHandler) DownloadHealthReport(c *gin.Context) {
 		req.TimeRange = "7days"
 	}
 
-	var fileBuffer *bytes.Buffer
-	var filename string
-	var err error
-
-	// Generate laporan berdasarkan format
-	if format == "csv" {
-		fileBuffer, filename, err = h.healthDataService.GenerateReportCSV(userID, &req)
-		if err != nil {
-			if err.Error() == "start_date dan end_date wajib diisi untuk custom range" {
-				utils.BadRequest(c, "Validasi gagal", err.Error())
-				return
-			}
-			utils.InternalServerError(c, "Gagal membuat laporan CSV", err.Error())
+	// Generate laporan PDF
+	fileBuffer, filename, err := h.healthDataService.GenerateReportPDF(userID, &req)
+	if err != nil {
+		if err.Error() == "start_date dan end_date wajib diisi untuk custom range" {
+			utils.BadRequest(c, "Validasi gagal", err.Error())
 			return
 		}
-		// Set header untuk download CSV
-		c.Header("Content-Type", "text/csv; charset=utf-8")
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
-	} else {
-		fileBuffer, filename, err = h.healthDataService.GenerateReportJSON(userID, &req)
-		if err != nil {
-			if err.Error() == "start_date dan end_date wajib diisi untuk custom range" {
-				utils.BadRequest(c, "Validasi gagal", err.Error())
-				return
-			}
-			utils.InternalServerError(c, "Gagal membuat laporan JSON", err.Error())
-			return
-		}
-		// Set header untuk download JSON
-		c.Header("Content-Type", "application/json; charset=utf-8")
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+		utils.InternalServerError(c, "Gagal membuat laporan PDF", err.Error())
+		return
 	}
 
+	// Set header untuk download PDF
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+
 	// Kirim file
-	c.Data(http.StatusOK, c.GetHeader("Content-Type"), fileBuffer.Bytes())
+	c.Data(http.StatusOK, "application/pdf", fileBuffer.Bytes())
 }
 
