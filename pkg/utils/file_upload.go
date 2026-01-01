@@ -93,10 +93,35 @@ func UploadProfileImage(fileHeader *multipart.FileHeader, userID uint) (string, 
 	}
 
 	// Generate filename: userID_timestamp.ext
-	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+	// Sanitize filename untuk mencegah path traversal
+	originalExt := strings.ToLower(filepath.Ext(fileHeader.Filename))
+	// Validasi ekstensi sudah dilakukan di ValidateImageFile, tapi double check
+	allowedExts := []string{".jpg", ".jpeg", ".png", ".webp"}
+	ext := ".png" // default
+	for _, allowedExt := range allowedExts {
+		if originalExt == allowedExt {
+			ext = originalExt
+			break
+		}
+	}
+	
 	timestamp := time.Now().Unix()
 	filename := fmt.Sprintf("%d_%d%s", userID, timestamp, ext)
+	// Gunakan filepath.Join untuk mencegah path traversal
 	destPath := filepath.Join(UploadDir, filename)
+	
+	// Double check: pastikan path masih dalam UploadDir (prevent path traversal)
+	absDestPath, err := filepath.Abs(destPath)
+	if err != nil {
+		return "", fmt.Errorf("gagal mendapatkan absolute path: %w", err)
+	}
+	absUploadDir, err := filepath.Abs(UploadDir)
+	if err != nil {
+		return "", fmt.Errorf("gagal mendapatkan absolute path upload dir: %w", err)
+	}
+	if !strings.HasPrefix(absDestPath, absUploadDir) {
+		return "", errors.New("path file tidak valid: path traversal terdeteksi")
+	}
 
 	// Buat file baru
 	dst, err := os.Create(destPath)
@@ -138,8 +163,4 @@ func DeleteProfileImage(filepath string) error {
 	return nil
 }
 
-// GetFileExtension mendapatkan ekstensi file dari filename
-func GetFileExtension(filename string) string {
-	return strings.ToLower(filepath.Ext(filename))
-}
 

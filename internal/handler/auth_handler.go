@@ -146,55 +146,22 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "Login berhasil", resp)
 }
 
-func extractTokenFromHeader(authHeader string) (string, bool) {
-	if authHeader == "" {
-		return "", false
-	}
-
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		return authHeader[7:], true
-	}
-	return authHeader, true
-}
-
-func extractUserIDFromClaims(claims jwt.MapClaims) (uint, bool) {
-	sub, ok := claims["sub"]
-	if !ok {
-		return 0, false
-	}
-
-	if userIDFloat, ok := sub.(float64); ok {
-		return uint(userIDFloat), true
-	}
-
-	if userIDStr, ok := sub.(string); ok {
-		userIDUint, err := strconv.ParseUint(userIDStr, 10, 32)
-		if err != nil {
-			return 0, false
-		}
-		return uint(userIDUint), true
-	}
-
-	return 0, false
-}
-
-func extractExpiryFromClaims(claims jwt.MapClaims) time.Time {
-	if exp, ok := claims["exp"].(float64); ok {
-		return time.Unix(int64(exp), 0)
-	}
-	return time.Now().Add(24 * time.Hour)
-}
-
 // Logout menangani request logout user.
 // Method ini idempotent - selalu return sukses meskipun token tidak valid atau sudah di-blacklist.
 func (h *AuthHandler) Logout(c *gin.Context) {
 	authHeader := c.GetHeader("Authorization")
-	tokenString, hasToken := extractTokenFromHeader(authHeader)
-	if !hasToken {
+	if authHeader == "" {
 		utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
 		return
 	}
 
+	// Extract token dari header
+	tokenString := authHeader
+	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+		tokenString = authHeader[7:]
+	}
+
+	// Parse token
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrSignatureInvalid
@@ -213,6 +180,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		return
 	}
 
+	// Cek apakah token sudah di-blacklist
 	isBlacklisted, err := h.authRepo.IsTokenBlacklisted(tokenString)
 	if err != nil {
 		utils.InternalServerError(c, "Gagal memeriksa status token", err.Error())
@@ -223,14 +191,38 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		return
 	}
 
-	userID, ok := extractUserIDFromClaims(claims)
+	// Extract user ID dari claims
+	var userID uint
+	sub, ok := claims["sub"]
 	if !ok {
 		utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
 		return
 	}
 
-	expiresAt := extractExpiryFromClaims(claims)
+	if userIDFloat, ok := sub.(float64); ok {
+		userID = uint(userIDFloat)
+	} else if userIDStr, ok := sub.(string); ok {
+		userIDUint, err := strconv.ParseUint(userIDStr, 10, 32)
+		if err != nil {
+			utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
+			return
+		}
+		userID = uint(userIDUint)
+	} else {
+		utils.SuccessResponse(c, http.StatusOK, "Sesi sudah berakhir", nil)
+		return
+	}
 
+	// Extract expiry time dari claims
+	var expiresAt time.Time
+	if exp, ok := claims["exp"].(float64); ok {
+		expiresAt = time.Unix(int64(exp), 0)
+	} else {
+		// Default 24 jam jika tidak ada exp
+		expiresAt = time.Now().Add(24 * time.Hour)
+	}
+
+	// Blacklist token
 	if err := h.authRepo.BlacklistToken(tokenString, userID, expiresAt); err != nil {
 		utils.InternalServerError(c, "Gagal melakukan logout", err.Error())
 		return

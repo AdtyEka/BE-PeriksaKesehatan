@@ -55,29 +55,6 @@ func ValidateNullableString(field *string, fieldName string, required bool) erro
 	return nil
 }
 
-// RequireAtLeastOneField memastikan minimal satu field dari slice field nullable tidak nil
-// Berguna untuk memastikan request tidak kosong semua
-func RequireAtLeastOneField(fieldNames []string, fields ...*interface{}) error {
-	if len(fieldNames) != len(fields) {
-		return errors.New("jumlah fieldNames harus sama dengan jumlah fields")
-	}
-
-	hasAtLeastOne := false
-	for i, field := range fields {
-		if field != nil && *field != nil {
-			hasAtLeastOne = true
-			break
-		}
-		// Skip check untuk field yang tidak relevan
-		_ = fieldNames[i]
-	}
-
-	if !hasAtLeastOne {
-		return errors.New("minimal satu field kesehatan harus diisi")
-	}
-
-	return nil
-}
 
 // RequireAtLeastOneHealthMetric memastikan minimal satu metrik kesehatan diisi
 // Helper khusus untuk health data yang lebih type-safe
@@ -111,46 +88,4 @@ func RequireAtLeastOneHealthMetric(
 	return nil
 }
 
-// SafeDerefInt safely dereference int pointer, return default jika nil
-// Hanya digunakan untuk kasus di mana kita yakin field harus ada setelah validasi
-// JANGAN gunakan untuk validasi - gunakan ValidateNullableInt
-func SafeDerefInt(ptr *int, defaultValue int) int {
-	if ptr == nil {
-		return defaultValue
-	}
-	return *ptr
-}
-
-// SafeDerefFloat64 safely dereference float64 pointer, return default jika nil
-// Hanya digunakan untuk kasus di mana kita yakin field harus ada setelah validasi
-// JANGAN gunakan untuk validasi - gunakan ValidateNullableFloat64
-func SafeDerefFloat64(ptr *float64, defaultValue float64) float64 {
-	if ptr == nil {
-		return defaultValue
-	}
-	return *ptr
-}
-
-// SafeDerefString safely dereference string pointer, return default jika nil
-func SafeDerefString(ptr *string, defaultValue string) string {
-	if ptr == nil {
-		return defaultValue
-	}
-	return *ptr
-}
-
-// IsFieldProvided mengecek apakah field benar-benar dikirim (bukan nil)
-// Berguna untuk membedakan antara "field tidak dikirim" vs "field dikirim null"
-func IsFieldProvided[T any](field *T) bool {
-	return field != nil
-}
-
-// MustHaveValue memastikan field tidak nil, return error jika nil
-// Digunakan untuk field yang wajib setelah validasi business logic
-func MustHaveValue[T any](field *T, fieldName string) error {
-	if field == nil {
-		return fmt.Errorf("%s wajib diisi", fieldName)
-	}
-	return nil
-}
 

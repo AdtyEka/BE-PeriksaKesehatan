@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -35,7 +36,7 @@ func (s *HealthAlertService) CheckHealthAlerts(userID uint, req *request.HealthA
 		alerts = append(alerts, alert)
 		
 		if err := s.saveAlertToDB(userID, alert, req.RecordedAt); err != nil {
-			fmt.Printf("Error menyimpan alert tekanan darah: %v\n", err)
+			log.Printf("[HealthAlert] Warning: Gagal menyimpan alert tekanan darah untuk user %d: %v", userID, err)
 		}
 	}
 
@@ -44,25 +45,25 @@ func (s *HealthAlertService) CheckHealthAlerts(userID uint, req *request.HealthA
 		alerts = append(alerts, alert)
 		
 		if err := s.saveAlertToDB(userID, alert, req.RecordedAt); err != nil {
-			fmt.Printf("Error menyimpan alert gula darah rendah: %v\n", err)
+			log.Printf("[HealthAlert] Warning: Gagal menyimpan alert gula darah rendah untuk user %d: %v", userID, err)
 		}
 	} else if req.BloodSugar > 100 {
 		alert := s.createHighBloodSugarAlert(req)
 		alerts = append(alerts, alert)
 		
 		if err := s.saveAlertToDB(userID, alert, req.RecordedAt); err != nil {
-			fmt.Printf("Error menyimpan alert gula darah tinggi: %v\n", err)
+			log.Printf("[HealthAlert] Warning: Gagal menyimpan alert gula darah tinggi untuk user %d: %v", userID, err)
 		}
 	}
 
 	weightAlert, err := s.checkWeightLoss(userID, req.Weight, req.RecordedAt)
 	if err != nil {
-		fmt.Printf("Error memeriksa penurunan berat badan: %v\n", err)
+		log.Printf("[HealthAlert] Warning: Gagal memeriksa penurunan berat badan untuk user %d: %v", userID, err)
 	} else if weightAlert != nil {
 		alerts = append(alerts, *weightAlert)
 		
 		if err := s.saveAlertToDB(userID, *weightAlert, req.RecordedAt); err != nil {
-			fmt.Printf("Error menyimpan alert penurunan berat badan: %v\n", err)
+			log.Printf("[HealthAlert] Warning: Gagal menyimpan alert penurunan berat badan untuk user %d: %v", userID, err)
 		}
 	}
 
