@@ -12,20 +12,23 @@ import (
 )
 
 type ProfileService struct {
-	userRepo         *repository.UserRepository
-	healthDataRepo   *repository.HealthDataRepository
-	healthTargetRepo *repository.HealthTargetRepository
+	userRepo          *repository.UserRepository
+	healthDataRepo    *repository.HealthDataRepository
+	healthTargetRepo  *repository.HealthTargetRepository
+	personalInfoRepo  *repository.PersonalInfoRepository
 }
 
 func NewProfileService(
 	userRepo *repository.UserRepository,
 	healthDataRepo *repository.HealthDataRepository,
 	healthTargetRepo *repository.HealthTargetRepository,
+	personalInfoRepo *repository.PersonalInfoRepository,
 ) *ProfileService {
 	return &ProfileService{
 		userRepo:         userRepo,
 		healthDataRepo:   healthDataRepo,
 		healthTargetRepo: healthTargetRepo,
+		personalInfoRepo: personalInfoRepo,
 	}
 }
 
@@ -86,33 +89,56 @@ func (s *ProfileService) UpdateProfile(userID uint, req *request.UpdateProfileRe
 }
 
 func (s *ProfileService) GetPersonalInfo(userID uint) (*response.PersonalInfoResponse, error) {
-	user, err := s.userRepo.GetUserByID(userID)
+	// Cek apakah user ada
+	_, err := s.userRepo.GetUserByID(userID)
 	if err != nil {
 		return nil, err
 	}
 
-	resp := &response.PersonalInfoResponse{
-		Name: user.Nama,
+	// Ambil personal info dari tabel personal_infos
+	personalInfo, err := s.personalInfoRepo.GetPersonalInfoByUserID(userID)
+	if err != nil {
+		if err.Error() == "personal info tidak ditemukan" {
+			// Return response kosong jika belum ada data
+			return &response.PersonalInfoResponse{
+				Name: "",
+			}, nil
+		}
+		return nil, err
 	}
 
-	if user.BirthDate != nil {
-		birthDateStr := user.BirthDate.Format("2006-01-02")
+	resp := &response.PersonalInfoResponse{
+		Name: personalInfo.Name,
+	}
+
+	if personalInfo.BirthDate != nil {
+		birthDateStr := personalInfo.BirthDate.Format("2006-01-02")
 		resp.BirthDate = &birthDateStr
 	}
-	if user.Phone != nil {
-		resp.Phone = user.Phone
+	if personalInfo.Phone != nil {
+		resp.Phone = personalInfo.Phone
 	}
-	if user.Address != nil {
-		resp.Address = user.Address
+	if personalInfo.Address != nil {
+		resp.Address = personalInfo.Address
 	}
 
 	return resp, nil
 }
 
 func (s *ProfileService) UpdatePersonalInfo(userID uint, req *request.UpdatePersonalInfoRequest) error {
+	// Cek apakah user ada
 	_, err := s.userRepo.GetUserByID(userID)
 	if err != nil {
 		return err
+	}
+
+	// Cek apakah personal info sudah ada
+	exists, err := s.personalInfoRepo.CheckPersonalInfoExists(userID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return errors.New("personal info tidak ditemukan, silakan buat terlebih dahulu")
 	}
 
 	birthDate, err := time.Parse("2006-01-02", req.BirthDate)
@@ -125,7 +151,7 @@ func (s *ProfileService) UpdatePersonalInfo(userID uint, req *request.UpdatePers
 	}
 
 	updates := make(map[string]interface{})
-	updates["nama"] = req.Name
+	updates["name"] = req.Name
 	updates["birth_date"] = birthDate
 	if req.Phone != nil {
 		updates["phone"] = *req.Phone
@@ -134,7 +160,83 @@ func (s *ProfileService) UpdatePersonalInfo(userID uint, req *request.UpdatePers
 		updates["address"] = *req.Address
 	}
 
-	return s.userRepo.UpdateUserPersonalInfo(userID, updates)
+	return s.personalInfoRepo.UpdatePersonalInfo(userID, updates)
+}
+
+// CreatePersonalInfo membuat personal info baru untuk user
+func (s *ProfileService) CreatePersonalInfo(userID uint, req *request.CreatePersonalInfoRequest) (*response.PersonalInfoResponse, error) {
+	// Cek apakah user ada
+	_, err := s.userRepo.GetUserByID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cek apakah personal info sudah ada
+	exists, err := s.personalInfoRepo.CheckPersonalInfoExists(userID)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, errors.New("personal info sudah ada")
+	}
+
+	// Validasi birth_date format
+	birthDate, err := time.Parse("2006-01-02", req.BirthDate)
+	if err != nil {
+		return nil, errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
+	}
+
+	// Validasi birth_date tidak boleh di masa depan
+	if birthDate.After(time.Now()) {
+		return nil, errors.New("tanggal lahir tidak boleh di masa depan")
+	}
+
+	// Validasi phone jika ada
+	if req.Phone != nil && *req.Phone != "" {
+		phone := *req.Phone
+		// Validasi numeric dan panjang 10-15 digit
+		if len(phone) < 10 || len(phone) > 15 {
+			return nil, errors.New("phone harus 10-15 digit")
+		}
+		// Validasi numeric
+		for _, char := range phone {
+			if char < '0' || char > '9' {
+				return nil, errors.New("phone harus numeric")
+			}
+		}
+	}
+
+	// Buat personal info
+	personalInfo := &entity.PersonalInfo{
+		UserID:    userID,
+		Name:      req.Name,
+		BirthDate: &birthDate,
+		Phone:     req.Phone,
+		Address:   req.Address,
+	}
+
+	err = s.personalInfoRepo.CreatePersonalInfo(personalInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build response
+	resp := &response.PersonalInfoResponse{
+		Name: personalInfo.Name,
+	}
+
+	if personalInfo.BirthDate != nil {
+		birthDateStr := personalInfo.BirthDate.Format("2006-01-02")
+		resp.BirthDate = &birthDateStr
+	}
+	if personalInfo.Phone != nil {
+		resp.Phone = personalInfo.Phone
+	}
+	if personalInfo.Address != nil {
+		resp.Address = personalInfo.Address
+	}
+
+	return resp, nil
 }
 
 func (s *ProfileService) GetHealthTargets(userID uint) (*response.HealthTargetsResponse, error) {

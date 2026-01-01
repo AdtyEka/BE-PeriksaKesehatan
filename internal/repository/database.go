@@ -115,6 +115,10 @@ func runMigrations(db *gorm.DB) error {
 		migrationErrors = append(migrationErrors, fmt.Errorf("migrate educational_videos: %w", err))
 	}
 
+	if err := migratePersonalInfosTable(db); err != nil {
+		migrationErrors = append(migrationErrors, fmt.Errorf("migrate personal_infos: %w", err))
+	}
+
 	if len(migrationErrors) > 0 {
 		return fmt.Errorf("migration errors: %v", migrationErrors)
 	}
@@ -132,6 +136,7 @@ func autoMigrateTables(db *gorm.DB) error {
 		&entity.Category{},
 		&entity.EducationalVideo{},
 		&entity.HealthTarget{},
+		&entity.PersonalInfo{},
 	}
 
 	if err := db.AutoMigrate(entities...); err != nil {
@@ -287,6 +292,69 @@ func createIndexIfNotExists(db *gorm.DB, tableName, columnName, indexName string
 	}
 
 	log.Printf("[DB] Index %s berhasil ditambahkan", indexName)
+	return nil
+}
+
+// migratePersonalInfosTable memastikan tabel personal_infos memiliki constraint yang benar
+// Migration ini idempotent dan aman untuk Supabase/PostgreSQL
+func migratePersonalInfosTable(db *gorm.DB) error {
+	migrator := db.Migrator()
+
+	if !migrator.HasTable(&entity.PersonalInfo{}) {
+		log.Println("[DB] Tabel personal_infos belum ada, akan dibuat oleh AutoMigrate")
+		return nil
+	}
+
+	// Pastikan unique constraint pada user_id sudah ada
+	// GORM AutoMigrate sudah membuat uniqueIndex, tapi kita pastikan dengan migration manual
+	if err := ensureUniqueConstraint(db, "personal_infos", "user_id", "idx_personal_infos_user_id"); err != nil {
+		log.Printf("[DB] Warning: Gagal memastikan unique constraint untuk user_id: %v", err)
+		// Tidak return error, karena constraint mungkin sudah ada
+	}
+
+	log.Println("[DB] Migration personal_infos berhasil")
+	return nil
+}
+
+// ensureUniqueConstraint memastikan unique constraint ada pada kolom
+func ensureUniqueConstraint(db *gorm.DB, tableName, columnName, constraintName string) error {
+	// Cek apakah constraint sudah ada
+	var constraintExists bool
+	checkSQL := `
+		SELECT EXISTS (
+			SELECT 1 
+			FROM pg_constraint 
+			WHERE conname = $1
+		)
+	`
+	err := db.Raw(checkSQL, constraintName).Scan(&constraintExists).Error
+	if err != nil {
+		// Jika query gagal, anggap constraint belum ada dan coba buat
+		log.Printf("[DB] Warning: Gagal mengecek constraint %s, mencoba buat langsung", constraintName)
+	}
+
+	if constraintExists {
+		log.Printf("[DB] Constraint %s sudah ada, skip", constraintName)
+		return nil
+	}
+
+	// Buat unique constraint
+	// Note: GORM AutoMigrate dengan uniqueIndex seharusnya sudah membuat ini
+	// Tapi kita pastikan dengan migration manual
+	createSQL := fmt.Sprintf(
+		"CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(%s)",
+		constraintName, tableName, columnName,
+	)
+
+	if err := db.Exec(createSQL).Error; err != nil {
+		if isAlreadyExistsError(err) {
+			log.Printf("[DB] Constraint %s sudah ada", constraintName)
+			return nil
+		}
+		return fmt.Errorf("gagal membuat unique constraint %s: %w", constraintName, err)
+	}
+
+	log.Printf("[DB] Unique constraint %s berhasil dibuat", constraintName)
 	return nil
 }
 

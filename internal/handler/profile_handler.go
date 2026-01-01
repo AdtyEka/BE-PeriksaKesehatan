@@ -97,6 +97,72 @@ func (h *ProfileHandler) GetPersonalInfo(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "Informasi pribadi berhasil diambil", resp)
 }
 
+func (h *ProfileHandler) CreatePersonalInfo(c *gin.Context) {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
+		return
+	}
+
+	var req request.CreatePersonalInfoRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "Data tidak valid", err.Error())
+		return
+	}
+
+	// Validasi name wajib (sudah divalidasi binding, tapi double check)
+	if req.Name == "" {
+		utils.BadRequest(c, "Validasi gagal", "name wajib diisi")
+		return
+	}
+
+	// Validasi birth_date wajib (sudah divalidasi binding, tapi double check)
+	if req.BirthDate == "" {
+		utils.BadRequest(c, "Validasi gagal", "birth_date wajib diisi")
+		return
+	}
+
+	// Validasi phone jika ada
+	if req.Phone != nil && *req.Phone != "" {
+		phone := *req.Phone
+		// Validasi panjang 10-15 digit
+		if len(phone) < 10 || len(phone) > 15 {
+			utils.BadRequest(c, "Validasi gagal", "phone harus 10-15 digit")
+			return
+		}
+		// Validasi numeric
+		for _, char := range phone {
+			if char < '0' || char > '9' {
+				utils.BadRequest(c, "Validasi gagal", "phone harus numeric")
+				return
+			}
+		}
+	}
+
+	resp, err := h.profileService.CreatePersonalInfo(userID, &req)
+	if err != nil {
+		if err.Error() == "user tidak ditemukan" {
+			utils.NotFound(c, "User tidak ditemukan")
+			return
+		}
+		if err.Error() == "personal info sudah ada" {
+			utils.ErrorResponse(c, http.StatusConflict, "Data personal info sudah ada", nil)
+			return
+		}
+		if err.Error() == "format tanggal lahir tidak valid, gunakan format YYYY-MM-DD" ||
+			err.Error() == "tanggal lahir tidak boleh di masa depan" ||
+			err.Error() == "phone harus 10-15 digit" ||
+			err.Error() == "phone harus numeric" {
+			utils.BadRequest(c, "Validasi gagal", err.Error())
+			return
+		}
+		utils.InternalServerError(c, "Gagal membuat informasi pribadi", err.Error())
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusCreated, "Informasi pribadi berhasil dibuat", resp)
+}
+
 func (h *ProfileHandler) UpdatePersonalInfo(c *gin.Context) {
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
@@ -115,6 +181,10 @@ func (h *ProfileHandler) UpdatePersonalInfo(c *gin.Context) {
 	if err != nil {
 		if err.Error() == "user tidak ditemukan" {
 			utils.NotFound(c, "User tidak ditemukan")
+			return
+		}
+		if err.Error() == "personal info tidak ditemukan, silakan buat terlebih dahulu" {
+			utils.NotFound(c, "Personal info tidak ditemukan, silakan buat terlebih dahulu")
 			return
 		}
 		if err.Error() == "format tanggal lahir tidak valid, gunakan format YYYY-MM-DD" ||

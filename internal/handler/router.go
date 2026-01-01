@@ -18,11 +18,12 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 	educationalVideoRepo := repository.NewEducationalVideoRepository(userRepo.GetDB())
 	categoryRepo := repository.NewCategoryRepository(userRepo.GetDB())
 	healthTargetRepo := repository.NewHealthTargetRepository(userRepo.GetDB())
+	personalInfoRepo := repository.NewPersonalInfoRepository(userRepo.GetDB())
 
 	healthDataService := service.NewHealthDataService(healthDataRepo)
 	healthAlertService := service.NewHealthAlertService(healthAlertRepo, healthDataRepo)
 	educationalVideoService := service.NewEducationalVideoService(educationalVideoRepo, categoryRepo)
-	profileService := service.NewProfileService(userRepo, healthDataRepo, healthTargetRepo)
+	profileService := service.NewProfileService(userRepo, healthDataRepo, healthTargetRepo, personalInfoRepo)
 
 	// Initialize middleware
 	authMiddleware := middleware.AuthMiddleware(authRepo, cfg.JWTSecret)
@@ -67,6 +68,7 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 			profile.POST("", profileHandler.CreateProfile)
 			profile.GET("", profileHandler.GetProfile)
 			profile.PUT("", profileHandler.UpdateProfile)
+			profile.POST("/personal-info", profileHandler.CreatePersonalInfo)
 			profile.GET("/personal-info", profileHandler.GetPersonalInfo)
 			profile.PUT("/personal-info", profileHandler.UpdatePersonalInfo)
 			profile.GET("/health-targets", profileHandler.GetHealthTargets)

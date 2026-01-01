@@ -40,4 +40,12 @@ type CreateProfileRequest struct {
 	// Photo akan di-handle sebagai *multipart.FileHeader di handler
 }
 
+// CreatePersonalInfoRequest untuk POST /api/profile/personal-info
+type CreatePersonalInfoRequest struct {
+	Name      string  `json:"name" binding:"required,min=1,max=100"`
+	BirthDate string  `json:"birth_date" binding:"required"` // format: YYYY-MM-DD
+	Phone     *string `json:"phone" binding:"omitempty"`    // akan divalidasi manual untuk numeric dan panjang
+	Address   *string `json:"address" binding:"omitempty"`   // optional
+}
+
 
