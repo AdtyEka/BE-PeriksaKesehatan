@@ -6,6 +6,7 @@ import (
 	"BE-PeriksaKesehatan/pkg/middleware"
 	"BE-PeriksaKesehatan/pkg/utils"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -100,43 +101,96 @@ func (h *ProfileHandler) CreatePersonalInfo(c *gin.Context) {
 		return
 	}
 
+	// Parse multipart form
 	var req request.CreatePersonalInfoRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBind(&req); err != nil {
 		utils.BadRequest(c, "Data tidak valid", err.Error())
 		return
 	}
 
-	// Validasi name wajib (sudah divalidasi binding, tapi double check)
+	// Validasi name wajib
 	if req.Name == "" {
 		utils.BadRequest(c, "Validasi gagal", "name wajib diisi")
 		return
 	}
 
-	// Validasi birth_date wajib (sudah divalidasi binding, tapi double check)
+	// Validasi birth_date wajib
 	if req.BirthDate == "" {
 		utils.BadRequest(c, "Validasi gagal", "birth_date wajib diisi")
 		return
 	}
 
-	// Validasi phone jika ada
-	if req.Phone != nil && *req.Phone != "" {
-		phone := *req.Phone
-		// Validasi panjang 10-15 digit
-		if len(phone) < 10 || len(phone) > 15 {
-			utils.BadRequest(c, "Validasi gagal", "phone harus 10-15 digit")
+	// Validasi phone wajib (required di binding, tapi double check)
+	if req.Phone == nil || *req.Phone == "" {
+		utils.BadRequest(c, "Validasi gagal", "phone wajib diisi")
+		return
+	}
+
+	// Validasi phone: panjang 10-15 digit dan numeric
+	phone := *req.Phone
+	if len(phone) < 10 || len(phone) > 15 {
+		utils.BadRequest(c, "Validasi gagal", "phone harus 10-15 digit")
+		return
+	}
+	for _, char := range phone {
+		if char < '0' || char > '9' {
+			utils.BadRequest(c, "Validasi gagal", "phone harus numeric")
 			return
-		}
-		// Validasi numeric
-		for _, char := range phone {
-			if char < '0' || char > '9' {
-				utils.BadRequest(c, "Validasi gagal", "phone harus numeric")
-				return
-			}
 		}
 	}
 
-	resp, err := h.profileService.CreatePersonalInfo(userID, &req)
+	// Handle file upload (optional)
+	var photoURL *string
+	fileHeader, err := c.FormFile("photo")
 	if err != nil {
+		// Error bisa berarti file tidak ada (opsional) atau error lain
+		// Cek apakah error adalah "no such file" (file tidak dikirim, ini OK karena optional)
+		if err.Error() != "http: no such file" && err.Error() != "multipart: NextPart: EOF" {
+			// Error selain "file tidak ada" berarti error lain
+			utils.BadRequest(c, "Gagal membaca file", err.Error())
+			return
+		}
+		// File tidak dikirim, ini OK karena optional
+		fileHeader = nil
+	}
+
+	// Validasi dan upload file jika ada
+	if fileHeader != nil {
+		// Validasi file
+		if err := utils.ValidateImageFile(fileHeader); err != nil {
+			// Cek jenis error untuk status code yang tepat
+			if err.Error() == "ukuran file terlalu besar, maksimal 2 MB" {
+				utils.ErrorResponse(c, http.StatusRequestEntityTooLarge, "File terlalu besar", err.Error())
+				return
+			}
+			if err.Error() == "tipe file tidak didukung, hanya jpg, jpeg, png, dan webp yang diizinkan" ||
+				err.Error() == "ekstensi file tidak didukung, hanya .jpg, .jpeg, .png, dan .webp yang diizinkan" {
+				utils.ErrorResponse(c, http.StatusUnsupportedMediaType, "Tipe file tidak didukung", err.Error())
+				return
+			}
+			utils.BadRequest(c, "Validasi file gagal", err.Error())
+			return
+		}
+
+		// Upload file
+		uploadedPath, err := utils.UploadProfileImage(fileHeader, userID)
+		if err != nil {
+			utils.InternalServerError(c, "Gagal mengupload foto", err.Error())
+			return
+		}
+
+		// Simpan path untuk disimpan di database
+		photoURL = &uploadedPath
+	}
+
+	// Panggil service
+	resp, err := h.profileService.CreatePersonalInfo(userID, &req, photoURL)
+	if err != nil {
+		// Rollback: hapus file jika sudah diupload
+		if photoURL != nil {
+			_ = utils.DeleteProfileImage(*photoURL)
+		}
+
 		if err.Error() == "user tidak ditemukan" {
 			utils.NotFound(c, "User tidak ditemukan")
 			return
@@ -166,33 +220,152 @@ func (h *ProfileHandler) UpdatePersonalInfo(c *gin.Context) {
 		return
 	}
 
-	var req request.UpdatePersonalInfoRequest
+	// Cek content type untuk menentukan apakah JSON atau multipart
+	contentType := c.GetHeader("Content-Type")
+	isMultipart := false
+	if contentType != "" {
+		isMultipart = len(contentType) >= 19 && contentType[:19] == "multipart/form-data"
+	}
+
 	var err error
-	if err = c.ShouldBindJSON(&req); err != nil {
-		utils.BadRequest(c, "Data tidak valid", err.Error())
-		return
+	var oldPhotoURL *string
+
+	// Ambil photoURL lama jika akan diupdate (untuk hapus file lama nanti)
+	personalInfo, _ := h.profileService.GetPersonalInfo(userID)
+	if personalInfo != nil && personalInfo.PhotoURL != nil {
+		oldPhotoURL = personalInfo.PhotoURL
 	}
 
-	err = h.profileService.UpdatePersonalInfo(userID, &req)
-	if err != nil {
-		if err.Error() == "user tidak ditemukan" {
-			utils.NotFound(c, "User tidak ditemukan")
+	if isMultipart {
+		// Handle multipart/form-data (dengan support file upload)
+		var req request.UpdatePersonalInfoMultipartRequest
+		if err = c.ShouldBind(&req); err != nil {
+			utils.BadRequest(c, "Data tidak valid", err.Error())
 			return
 		}
-		if err.Error() == "personal info tidak ditemukan, silakan buat terlebih dahulu" {
-			utils.NotFound(c, "Personal info tidak ditemukan, silakan buat terlebih dahulu")
-			return
-		}
-		if err.Error() == "format tanggal lahir tidak valid, gunakan format YYYY-MM-DD" ||
-			err.Error() == "tanggal lahir tidak boleh di masa depan" {
-			utils.BadRequest(c, "Validasi gagal", err.Error())
-			return
-		}
-		utils.InternalServerError(c, "Gagal mengupdate informasi pribadi", err.Error())
-		return
-	}
 
-	utils.SuccessResponse(c, http.StatusOK, "Informasi pribadi berhasil diupdate", nil)
+		// Validasi format birth_date jika dikirim
+		if req.BirthDate != nil && *req.BirthDate != "" {
+			_, err := time.Parse("2006-01-02", *req.BirthDate)
+			if err != nil {
+				utils.BadRequest(c, "Validasi gagal", "format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
+				return
+			}
+		}
+
+		// Handle file upload (optional)
+		var photoURL *string
+		fileHeader, err := c.FormFile("photo")
+		if err != nil {
+			// Error bisa berarti file tidak ada (opsional) atau error lain
+			// Cek apakah error adalah "no such file" (file tidak dikirim, ini OK karena optional)
+			if err.Error() != "http: no such file" && err.Error() != "multipart: NextPart: EOF" {
+				// Error selain "file tidak ada" berarti error lain
+				utils.BadRequest(c, "Gagal membaca file", err.Error())
+				return
+			}
+			// File tidak dikirim, ini OK karena optional
+			fileHeader = nil
+		}
+
+		// Validasi dan upload file jika ada
+		if fileHeader != nil {
+			// Validasi file
+			if err := utils.ValidateImageFile(fileHeader); err != nil {
+				// Cek jenis error untuk status code yang tepat
+				if err.Error() == "ukuran file terlalu besar, maksimal 2 MB" {
+					utils.ErrorResponse(c, http.StatusRequestEntityTooLarge, "File terlalu besar", err.Error())
+					return
+				}
+				if err.Error() == "tipe file tidak didukung, hanya jpg, jpeg, png, dan webp yang diizinkan" ||
+					err.Error() == "ekstensi file tidak didukung, hanya .jpg, .jpeg, .png, dan .webp yang diizinkan" {
+					utils.ErrorResponse(c, http.StatusUnsupportedMediaType, "Tipe file tidak didukung", err.Error())
+					return
+				}
+				utils.BadRequest(c, "Validasi file gagal", err.Error())
+				return
+			}
+
+			// Upload file
+			uploadedPath, err := utils.UploadProfileImage(fileHeader, userID)
+			if err != nil {
+				utils.InternalServerError(c, "Gagal mengupload foto", err.Error())
+				return
+			}
+
+			// Simpan path untuk disimpan di database
+			photoURL = &uploadedPath
+		}
+
+		// Panggil service dengan photo
+		err = h.profileService.UpdatePersonalInfoWithPhoto(userID, &req, photoURL)
+		if err != nil {
+			// Rollback: hapus file baru jika sudah diupload
+			if photoURL != nil {
+				_ = utils.DeleteProfileImage(*photoURL)
+			}
+
+			if err.Error() == "user tidak ditemukan" {
+				utils.NotFound(c, "User tidak ditemukan")
+				return
+			}
+			if err.Error() == "personal info tidak ditemukan, silakan buat terlebih dahulu" {
+				utils.NotFound(c, "Personal info tidak ditemukan, silakan buat terlebih dahulu")
+				return
+			}
+			if err.Error() == "format tanggal lahir tidak valid, gunakan format YYYY-MM-DD" ||
+				err.Error() == "tanggal lahir tidak boleh di masa depan" {
+				utils.BadRequest(c, "Validasi gagal", err.Error())
+				return
+			}
+			utils.InternalServerError(c, "Gagal mengupdate informasi pribadi", err.Error())
+			return
+		}
+
+		// Hapus foto lama jika ada foto baru yang diupload
+		if photoURL != nil && oldPhotoURL != nil && *oldPhotoURL != "" {
+			_ = utils.DeleteProfileImage(*oldPhotoURL)
+		}
+
+		utils.SuccessResponse(c, http.StatusOK, "Informasi pribadi berhasil diupdate", nil)
+	} else {
+		// Handle JSON (tanpa file upload)
+		var req request.UpdatePersonalInfoRequest
+		if err = c.ShouldBindJSON(&req); err != nil {
+			utils.BadRequest(c, "Data tidak valid", err.Error())
+			return
+		}
+
+		// Validasi format birth_date jika dikirim
+		if req.BirthDate != nil && *req.BirthDate != "" {
+			_, err := time.Parse("2006-01-02", *req.BirthDate)
+			if err != nil {
+				utils.BadRequest(c, "Validasi gagal", "format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
+				return
+			}
+		}
+
+		err = h.profileService.UpdatePersonalInfo(userID, &req)
+		if err != nil {
+			if err.Error() == "user tidak ditemukan" {
+				utils.NotFound(c, "User tidak ditemukan")
+				return
+			}
+			if err.Error() == "personal info tidak ditemukan, silakan buat terlebih dahulu" {
+				utils.NotFound(c, "Personal info tidak ditemukan, silakan buat terlebih dahulu")
+				return
+			}
+			if err.Error() == "format tanggal lahir tidak valid, gunakan format YYYY-MM-DD" ||
+				err.Error() == "tanggal lahir tidak boleh di masa depan" {
+				utils.BadRequest(c, "Validasi gagal", err.Error())
+				return
+			}
+			utils.InternalServerError(c, "Gagal mengupdate informasi pribadi", err.Error())
+			return
+		}
+
+		utils.SuccessResponse(c, http.StatusOK, "Informasi pribadi berhasil diupdate", nil)
+	}
 }
 
 func (h *ProfileHandler) GetHealthTargets(c *gin.Context) {
@@ -287,115 +460,5 @@ func (h *ProfileHandler) UpdateSettings(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Pengaturan berhasil diupdate", nil)
-}
-
-func (h *ProfileHandler) CreateProfile(c *gin.Context) {
-	// Ambil user_id dari JWT context
-	userID, ok := middleware.GetUserIDFromContext(c)
-	if !ok {
-		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
-		return
-	}
-
-	// Parse multipart form
-	var req request.CreateProfileRequest
-	if err := c.ShouldBind(&req); err != nil {
-		utils.BadRequest(c, "Data tidak valid", err.Error())
-		return
-	}
-
-	// Validasi field wajib
-	if req.Name == "" {
-		utils.BadRequest(c, "Validasi gagal", "name wajib diisi")
-		return
-	}
-	if req.Email == "" {
-		utils.BadRequest(c, "Validasi gagal", "email wajib diisi")
-		return
-	}
-
-	// Validasi email format sudah dilakukan oleh binding tag "email"
-	// Double check tidak diperlukan karena gin sudah memvalidasi
-
-	// Validasi optional fields
-	if req.Weight != nil && *req.Weight <= 0 {
-		utils.BadRequest(c, "Validasi gagal", "weight harus lebih besar dari 0")
-		return
-	}
-	if req.Height != nil && *req.Height <= 0 {
-		utils.BadRequest(c, "Validasi gagal", "height harus lebih besar dari 0")
-		return
-	}
-	if req.Age != nil && *req.Age <= 0 {
-		utils.BadRequest(c, "Validasi gagal", "age harus lebih besar dari 0")
-		return
-	}
-
-	// Handle file upload
-	var photoURL *string
-	fileHeader, err := c.FormFile("photo")
-	if err != nil {
-		// Error bisa berarti file tidak ada (opsional) atau error lain
-		// Cek apakah error adalah "no such file" (file tidak dikirim, ini OK karena optional)
-		if err.Error() != "http: no such file" && err.Error() != "multipart: NextPart: EOF" {
-			// Error selain "file tidak ada" berarti error lain
-			utils.BadRequest(c, "Gagal membaca file", err.Error())
-			return
-		}
-		// File tidak dikirim, ini OK karena optional
-		fileHeader = nil
-	}
-
-	// Validasi dan upload file jika ada
-	if fileHeader != nil {
-		// Validasi file
-		if err := utils.ValidateImageFile(fileHeader); err != nil {
-			// Cek jenis error untuk status code yang tepat
-			if err.Error() == "ukuran file terlalu besar, maksimal 2 MB" {
-				utils.ErrorResponse(c, http.StatusRequestEntityTooLarge, "File terlalu besar", err.Error())
-				return
-			}
-			if err.Error() == "tipe file tidak didukung, hanya jpg, jpeg, png, dan webp yang diizinkan" ||
-				err.Error() == "ekstensi file tidak didukung, hanya .jpg, .jpeg, .png, dan .webp yang diizinkan" {
-				utils.ErrorResponse(c, http.StatusUnsupportedMediaType, "Tipe file tidak didukung", err.Error())
-				return
-			}
-			utils.BadRequest(c, "Validasi file gagal", err.Error())
-			return
-		}
-
-		// Upload file
-		uploadedPath, err := utils.UploadProfileImage(fileHeader, userID)
-		if err != nil {
-			utils.InternalServerError(c, "Gagal mengupload foto", err.Error())
-			return
-		}
-
-		// Simpan path untuk disimpan di database
-		photoURL = &uploadedPath
-	}
-
-	// Panggil service
-	resp, err := h.profileService.CreateProfile(userID, &req, photoURL)
-	if err != nil {
-		// Rollback: hapus file jika sudah diupload
-		if photoURL != nil {
-			_ = utils.DeleteProfileImage(*photoURL)
-		}
-
-		if err.Error() == "user tidak ditemukan" {
-			utils.NotFound(c, "User tidak ditemukan")
-			return
-		}
-		if err.Error() == "profile sudah ada" {
-			utils.ErrorResponse(c, http.StatusConflict, "Profile sudah ada", nil)
-			return
-		}
-		utils.InternalServerError(c, "Gagal membuat profil", err.Error())
-		return
-	}
-
-	// Response sukses
-	utils.SuccessResponse(c, http.StatusCreated, "Profil berhasil dibuat", resp)
 }
 

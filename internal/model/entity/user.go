@@ -9,8 +9,6 @@ type User struct {
 	Username    string       `gorm:"type:varchar(50);unique;not null" json:"username"`
 	Email       string       `gorm:"type:varchar(100);unique;not null" json:"email"`
 	Password    string       `gorm:"type:varchar(255);not null" json:"-"`
-	// Profil & informasi pribadi
-	PhotoURL  *string     `gorm:"type:text" json:"photo_url,omitempty"`                    // URL foto profil
 
 	// Pengaturan aplikasi
 	NotificationEnabled *bool   `gorm:"default:true;column:notification_enabled" json:"notification_enabled,omitempty"`

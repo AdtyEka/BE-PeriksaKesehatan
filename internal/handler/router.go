@@ -65,7 +65,6 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 		profile := api.Group("/profile")
 		profile.Use(authMiddleware)
 		{
-			profile.POST("", profileHandler.CreateProfile)
 			profile.GET("", profileHandler.GetProfile)
 			profile.PUT("", profileHandler.UpdateProfile)
 			profile.POST("/personal-info", profileHandler.CreatePersonalInfo)

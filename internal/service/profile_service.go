@@ -6,7 +6,6 @@ import (
 	"BE-PeriksaKesehatan/internal/model/entity"
 	"BE-PeriksaKesehatan/internal/repository"
 	"errors"
-	"fmt"
 	"math"
 	"time"
 )
@@ -44,17 +43,23 @@ func (s *ProfileService) GetProfile(userID uint) (*response.ProfileResponse, err
 	}
 
 	var age *int
+	var photoURL *string
 	// Ambil birth_date dari personal_info jika ada
 	personalInfo, err := s.personalInfoRepo.GetPersonalInfoByUserID(userID)
-	if err == nil && personalInfo != nil && personalInfo.BirthDate != nil {
-		calculatedAge := s.calculateAge(*personalInfo.BirthDate)
-		age = &calculatedAge
+	if err == nil && personalInfo != nil {
+		if personalInfo.BirthDate != nil {
+			calculatedAge := s.calculateAge(*personalInfo.BirthDate)
+			age = &calculatedAge
+		}
+		if personalInfo.PhotoURL != nil {
+			photoURL = personalInfo.PhotoURL
+		}
 	}
 
 	resp := &response.ProfileResponse{
 		Name:     user.Nama,
 		Email:    user.Email,
-		PhotoURL: user.PhotoURL,
+		PhotoURL: photoURL,
 		Age:      age,
 	}
 
@@ -91,17 +96,25 @@ func (s *ProfileService) UpdateProfile(userID uint, req *request.UpdateProfileRe
 		return err
 	}
 
-	updates := make(map[string]interface{})
+	// Update user profile (nama)
+	userUpdates := make(map[string]interface{})
 	if req.Name != nil {
-		updates["nama"] = *req.Name
+		userUpdates["nama"] = *req.Name
 	}
-	if req.PhotoURL != nil {
-		updates["photo_url"] = *req.PhotoURL
+	if len(userUpdates) > 0 {
+		err = s.userRepo.UpdateUserProfile(userID, userUpdates)
+		if err != nil {
+			return err
+		}
 	}
 
-	// Update user profile jika ada perubahan
-	if len(updates) > 0 {
-		err = s.userRepo.UpdateUserProfile(userID, updates)
+	// Update personal info (photo_url)
+	personalInfoUpdates := make(map[string]interface{})
+	if req.PhotoURL != nil {
+		personalInfoUpdates["photo_url"] = *req.PhotoURL
+	}
+	if len(personalInfoUpdates) > 0 {
+		err = s.personalInfoRepo.UpdatePersonalInfo(userID, personalInfoUpdates)
 		if err != nil {
 			return err
 		}
@@ -134,7 +147,8 @@ func (s *ProfileService) UpdateProfile(userID uint, req *request.UpdateProfileRe
 		}
 	}
 
-	if len(updates) == 0 && req.Height == nil {
+	// Validasi bahwa ada data untuk diupdate
+	if len(userUpdates) == 0 && len(personalInfoUpdates) == 0 && req.Height == nil {
 		return errors.New("tidak ada data untuk diupdate")
 	}
 
@@ -174,6 +188,9 @@ func (s *ProfileService) GetPersonalInfo(userID uint) (*response.PersonalInfoRes
 	if personalInfo.Address != nil {
 		resp.Address = personalInfo.Address
 	}
+	if personalInfo.PhotoURL != nil {
+		resp.PhotoURL = personalInfo.PhotoURL
+	}
 
 	return resp, nil
 }
@@ -194,30 +211,121 @@ func (s *ProfileService) UpdatePersonalInfo(userID uint, req *request.UpdatePers
 		return errors.New("personal info tidak ditemukan, silakan buat terlebih dahulu")
 	}
 
-	birthDate, err := time.Parse("2006-01-02", req.BirthDate)
-	if err != nil {
-		return errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
-	}
-
-	if birthDate.After(time.Now()) {
-		return errors.New("tanggal lahir tidak boleh di masa depan")
-	}
-
 	updates := make(map[string]interface{})
-	updates["name"] = req.Name
-	updates["birth_date"] = birthDate
-	if req.Phone != nil {
+
+	// Update name jika dikirim
+	if req.Name != nil && *req.Name != "" {
+		updates["name"] = *req.Name
+	}
+
+	// Update birth_date jika dikirim
+	if req.BirthDate != nil && *req.BirthDate != "" {
+		birthDate, err := time.Parse("2006-01-02", *req.BirthDate)
+		if err != nil {
+			return errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
+		}
+
+		if birthDate.After(time.Now()) {
+			return errors.New("tanggal lahir tidak boleh di masa depan")
+		}
+
+		updates["birth_date"] = birthDate
+	}
+
+	// Update phone jika dikirim
+	if req.Phone != nil && *req.Phone != "" {
 		updates["phone"] = *req.Phone
 	}
-	if req.Address != nil {
+
+	// Update address jika dikirim
+	if req.Address != nil && *req.Address != "" {
 		updates["address"] = *req.Address
+	}
+
+	// Jika tidak ada field yang akan diupdate, return nil (no-op, tidak error)
+	if len(updates) == 0 {
+		return nil
 	}
 
 	return s.personalInfoRepo.UpdatePersonalInfo(userID, updates)
 }
 
+// UpdatePersonalInfoWithPhoto mengupdate personal info dengan support upload foto
+// photoURL adalah path file yang sudah diupload (jika ada)
+// Jika update gagal, rollback file sudah di-handle di handler
+func (s *ProfileService) UpdatePersonalInfoWithPhoto(userID uint, req *request.UpdatePersonalInfoMultipartRequest, photoURL *string) error {
+	// Cek apakah user ada
+	_, err := s.userRepo.GetUserByID(userID)
+	if err != nil {
+		return err
+	}
+
+	// Cek apakah personal info sudah ada
+	exists, err := s.personalInfoRepo.CheckPersonalInfoExists(userID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return errors.New("personal info tidak ditemukan, silakan buat terlebih dahulu")
+	}
+
+	updates := make(map[string]interface{})
+
+	// Update name jika dikirim
+	if req.Name != nil && *req.Name != "" {
+		updates["name"] = *req.Name
+	}
+
+	// Update birth_date jika dikirim
+	if req.BirthDate != nil && *req.BirthDate != "" {
+		birthDate, err := time.Parse("2006-01-02", *req.BirthDate)
+		if err != nil {
+			return errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
+		}
+
+		if birthDate.After(time.Now()) {
+			return errors.New("tanggal lahir tidak boleh di masa depan")
+		}
+
+		updates["birth_date"] = birthDate
+	}
+
+	// Update phone jika dikirim
+	if req.Phone != nil && *req.Phone != "" {
+		updates["phone"] = *req.Phone
+	}
+
+	// Update address jika dikirim
+	if req.Address != nil && *req.Address != "" {
+		updates["address"] = *req.Address
+	}
+
+	// Update photoURL jika ada file baru
+	if photoURL != nil {
+		updates["photo_url"] = *photoURL
+	}
+
+	// Jika tidak ada field yang akan diupdate, return nil (no-op, tidak error)
+	if len(updates) == 0 {
+		return nil
+	}
+
+	// Update database
+	err = s.personalInfoRepo.UpdatePersonalInfo(userID, updates)
+	if err != nil {
+		return err
+	}
+
+	// Note: Hapus foto lama akan dilakukan di handler setelah update berhasil
+	// untuk memastikan rollback yang benar jika ada error
+
+	return nil
+}
+
 // CreatePersonalInfo membuat personal info baru untuk user
-func (s *ProfileService) CreatePersonalInfo(userID uint, req *request.CreatePersonalInfoRequest) (*response.PersonalInfoResponse, error) {
+// photoURL adalah path file yang sudah diupload (jika ada)
+// Jika insert gagal, rollback file sudah di-handle di handler
+func (s *ProfileService) CreatePersonalInfo(userID uint, req *request.CreatePersonalInfoRequest, photoURL *string) (*response.PersonalInfoResponse, error) {
 	// Cek apakah user ada
 	_, err := s.userRepo.GetUserByID(userID)
 	if err != nil {
@@ -244,18 +352,20 @@ func (s *ProfileService) CreatePersonalInfo(userID uint, req *request.CreatePers
 		return nil, errors.New("tanggal lahir tidak boleh di masa depan")
 	}
 
-	// Validasi phone jika ada
-	if req.Phone != nil && *req.Phone != "" {
-		phone := *req.Phone
-		// Validasi numeric dan panjang 10-15 digit
-		if len(phone) < 10 || len(phone) > 15 {
-			return nil, errors.New("phone harus 10-15 digit")
-		}
-		// Validasi numeric
-		for _, char := range phone {
-			if char < '0' || char > '9' {
-				return nil, errors.New("phone harus numeric")
-			}
+	// Validasi phone wajib (sudah divalidasi di handler, tapi double check)
+	if req.Phone == nil || *req.Phone == "" {
+		return nil, errors.New("phone wajib diisi")
+	}
+
+	phone := *req.Phone
+	// Validasi numeric dan panjang 10-15 digit
+	if len(phone) < 10 || len(phone) > 15 {
+		return nil, errors.New("phone harus 10-15 digit")
+	}
+	// Validasi numeric
+	for _, char := range phone {
+		if char < '0' || char > '9' {
+			return nil, errors.New("phone harus numeric")
 		}
 	}
 
@@ -266,6 +376,7 @@ func (s *ProfileService) CreatePersonalInfo(userID uint, req *request.CreatePers
 		BirthDate: &birthDate,
 		Phone:     req.Phone,
 		Address:   req.Address,
+		PhotoURL:  photoURL,
 	}
 
 	err = s.personalInfoRepo.CreatePersonalInfo(personalInfo)
@@ -287,6 +398,9 @@ func (s *ProfileService) CreatePersonalInfo(userID uint, req *request.CreatePers
 	}
 	if personalInfo.Address != nil {
 		resp.Address = personalInfo.Address
+	}
+	if personalInfo.PhotoURL != nil {
+		resp.PhotoURL = personalInfo.PhotoURL
 	}
 
 	return resp, nil
@@ -473,138 +587,5 @@ func (s *ProfileService) calculateWeightProgress(target, current float64) float6
 	diff := math.Abs(current - target)
 	progress := 100 - (diff/target)*100
 	return math.Round(progress*100) / 100
-}
-
-// CreateProfile membuat profile baru untuk user
-// Validasi: name dan email wajib, weight/height/age optional dengan validasi
-// Upload foto jika ada, rollback jika gagal
-func (s *ProfileService) CreateProfile(userID uint, req *request.CreateProfileRequest, photoURL *string) (*response.ProfileResponse, error) {
-	// Cek apakah user ada
-	_, err := s.userRepo.GetUserByID(userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Cek apakah profile sudah ada
-	exists, err := s.userRepo.CheckProfileExists(userID)
-	if err != nil {
-		return nil, err
-	}
-	if exists {
-		return nil, errors.New("profile sudah ada")
-	}
-
-	// Validasi email format (sudah divalidasi di binding, tapi double check)
-	if req.Email == "" {
-		return nil, errors.New("email wajib diisi")
-	}
-
-	// Validasi optional fields
-	if req.Weight != nil && *req.Weight <= 0 {
-		return nil, errors.New("weight harus lebih besar dari 0")
-	}
-	if req.Height != nil && *req.Height <= 0 {
-		return nil, errors.New("height harus lebih besar dari 0")
-	}
-	if req.Age != nil && *req.Age <= 0 {
-		return nil, errors.New("age harus lebih besar dari 0")
-	}
-
-	// Prepare updates untuk user
-	updates := make(map[string]interface{})
-	updates["nama"] = req.Name
-	updates["email"] = req.Email
-
-	if photoURL != nil && *photoURL != "" {
-		updates["photo_url"] = *photoURL
-	}
-
-	// Handle age: jika age dikirim, akan di-handle di personal_info
-	// Tidak perlu update birth_date di user table karena sudah dipindah ke personal_info
-
-	// Create profile
-	err = s.userRepo.CreateProfile(userID, updates)
-	if err != nil {
-		return nil, err
-	}
-
-	// Jika weight atau height dikirim, buat atau update health_data
-	if req.Weight != nil || req.Height != nil {
-		healthData := &entity.HealthData{
-			UserID: userID,
-		}
-		if req.Weight != nil {
-			healthData.Weight = req.Weight
-		}
-		if req.Height != nil {
-			healthData.HeightCM = req.Height
-		}
-		err = s.healthDataRepo.CreateHealthData(healthData)
-		if err != nil {
-			// Rollback: hapus profile yang sudah dibuat
-			// Untuk sekarang, kita biarkan error ini, atau bisa di-handle dengan transaction
-			return nil, fmt.Errorf("gagal menyimpan health data: %w", err)
-		}
-	}
-
-	// Get updated user untuk response
-	user, err := s.userRepo.GetUserByID(userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Get latest health data untuk weight
-	latestHealthData, err := s.healthDataRepo.GetLatestHealthDataByUserID(userID)
-	if err != nil {
-		// Tidak fatal jika health data tidak ada
-		latestHealthData = nil
-	}
-
-	var age *int
-	// Ambil birth_date dari personal_info jika ada
-	personalInfo, err := s.personalInfoRepo.GetPersonalInfoByUserID(userID)
-	if err == nil && personalInfo != nil && personalInfo.BirthDate != nil {
-		calculatedAge := s.calculateAge(*personalInfo.BirthDate)
-		age = &calculatedAge
-	} else if req.Age != nil {
-		age = req.Age
-	} else {
-		// Default 0 jika tidak ada
-		zeroAge := 0
-		age = &zeroAge
-	}
-
-	resp := &response.ProfileResponse{
-		Name:     user.Nama,
-		Email:    user.Email,
-		PhotoURL: user.PhotoURL,
-		Age:      age,
-	}
-
-	// Set weight dan height dari health_data jika ada
-	if latestHealthData != nil {
-		if latestHealthData.Weight != nil {
-			resp.Weight = latestHealthData.Weight
-		} else {
-			// Default 0 jika tidak ada
-			zeroWeight := 0.0
-			resp.Weight = &zeroWeight
-		}
-		if latestHealthData.HeightCM != nil {
-			resp.Height = latestHealthData.HeightCM
-		} else {
-			// Default 0 jika tidak ada
-			zeroHeight := 0
-			resp.Height = &zeroHeight
-		}
-	} else {
-		// Default 0 jika tidak ada health_data
-		zeroWeight := 0.0
-		zeroHeight := 0
-		resp.Weight = &zeroWeight
-		resp.Height = &zeroHeight
-	}
-
-	return resp, nil
 }
 

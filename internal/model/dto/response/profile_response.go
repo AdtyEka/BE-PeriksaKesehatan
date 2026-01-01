@@ -16,6 +16,7 @@ type PersonalInfoResponse struct {
 	BirthDate *string `json:"birth_date,omitempty"` // YYYY-MM-DD
 	Phone     *string `json:"phone,omitempty"`
 	Address   *string `json:"address,omitempty"`
+	PhotoURL  *string `json:"photo_url,omitempty"`
 }
 
 // BloodPressureTargetProgress ringkasan target tekanan darah

@@ -7,12 +7,23 @@ type UpdateProfileRequest struct {
 	Height   *int    `json:"height" binding:"omitempty,min=50,max=250"` // cm
 }
 
-// UpdatePersonalInfoRequest untuk update informasi pribadi
+// UpdatePersonalInfoRequest untuk update informasi pribadi (JSON)
+// Semua field optional, hanya update field yang dikirim
 type UpdatePersonalInfoRequest struct {
-	Name        string  `json:"name" binding:"required,min=1,max=100"`
-	BirthDate   string  `json:"birth_date" binding:"required"`           // format: YYYY-MM-DD
-	Phone       *string `json:"phone" binding:"omitempty,min=6,max=30"`
-	Address     *string `json:"address" binding:"omitempty,min=5"`
+	Name      *string `json:"name" binding:"omitempty,min=1,max=100"`
+	BirthDate *string `json:"birth_date" binding:"omitempty"` // format: YYYY-MM-DD, akan divalidasi di handler
+	Phone     *string `json:"phone" binding:"omitempty,min=6,max=30"`
+	Address   *string `json:"address" binding:"omitempty,min=5"`
+}
+
+// UpdatePersonalInfoMultipartRequest untuk update informasi pribadi dengan file upload (multipart/form-data)
+// Semua field optional, hanya update field yang dikirim
+type UpdatePersonalInfoMultipartRequest struct {
+	Name      *string `form:"name" binding:"omitempty,min=1,max=100"`
+	BirthDate *string `form:"birth_date" binding:"omitempty"` // format: YYYY-MM-DD, akan divalidasi di handler
+	Phone     *string `form:"phone" binding:"omitempty,min=6,max=30"`
+	Address   *string `form:"address" binding:"omitempty,min=5"`
+	// Photo akan di-handle sebagai *multipart.FileHeader di handler
 }
 
 // UpdateHealthTargetsRequest untuk update target kesehatan
@@ -29,23 +40,14 @@ type UpdateSettingsRequest struct {
 	Language            *string `json:"language" binding:"omitempty,oneof=id en"`
 }
 
-// CreateProfileRequest untuk POST /api/profile (multipart/form-data)
+// CreatePersonalInfoRequest untuk POST /api/profile/personal-info (multipart/form-data)
 // Note: File upload tidak bisa di-validate dengan binding tag, harus divalidasi manual di handler
-type CreateProfileRequest struct {
-	Name   string  `form:"name" binding:"required,min=1,max=100"`
-	Email  string  `form:"email" binding:"required,email"`
-	Weight *float64 `form:"weight"` // optional, akan divalidasi manual
-	Height *int    `form:"height"`  // optional, akan divalidasi manual
-	Age    *int    `form:"age"`     // optional, akan divalidasi manual
-	// Photo akan di-handle sebagai *multipart.FileHeader di handler
-}
-
-// CreatePersonalInfoRequest untuk POST /api/profile/personal-info
 type CreatePersonalInfoRequest struct {
-	Name      string  `json:"name" binding:"required,min=1,max=100"`
-	BirthDate string  `json:"birth_date" binding:"required"` // format: YYYY-MM-DD
-	Phone     *string `json:"phone" binding:"omitempty"`    // akan divalidasi manual untuk numeric dan panjang
-	Address   *string `json:"address" binding:"omitempty"`   // optional
+	Name      string  `form:"name" binding:"required,min=1,max=100"`
+	BirthDate string  `form:"birth_date" binding:"required"` // format: YYYY-MM-DD
+	Phone     *string `form:"phone" binding:"required"`       // akan divalidasi manual untuk numeric dan panjang 10-15 digit
+	Address   *string `form:"address" binding:"omitempty"`   // optional
+	// Photo akan di-handle sebagai *multipart.FileHeader di handler
 }
 
 

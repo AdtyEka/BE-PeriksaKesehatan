@@ -209,57 +209,26 @@ func (r *UserRepository) GetDB() *gorm.DB {
 
 // CheckProfileExists mengecek apakah user sudah memiliki profile
 // Profile dianggap ada jika user sudah memiliki data profil tambahan
-// seperti photo_url yang diisi (menandakan sudah pernah POST /api/profile)
+// seperti photo_url yang diisi
 func (r *UserRepository) CheckProfileExists(userID uint) (bool, error) {
 	if userID == 0 {
 		return false, errors.New("ID tidak valid")
 	}
 
-	var user entity.User
-	result := r.db.Select("photo_url").First(&user, userID)
+	var personalInfo entity.PersonalInfo
+	result := r.db.Where("user_id = ?", userID).First(&personalInfo)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return false, errors.New("user tidak ditemukan")
+			return false, nil
 		}
 		return false, result.Error
 	}
 
-	// Profile dianggap ada jika user sudah memiliki photo_url
-	// Ini menandakan user sudah pernah membuat profile melalui POST /api/profile
-	if user.PhotoURL != nil && *user.PhotoURL != "" {
+	// Profile dianggap ada jika personal info sudah memiliki photo_url
+	if personalInfo.PhotoURL != nil && *personalInfo.PhotoURL != "" {
 		return true, nil
 	}
 
 	return false, nil
-}
-
-// CreateProfile membuat profile baru untuk user
-// Profile akan diupdate dengan data yang diberikan
-func (r *UserRepository) CreateProfile(userID uint, updates map[string]interface{}) error {
-	if userID == 0 {
-		return errors.New("ID tidak valid")
-	}
-
-	if len(updates) == 0 {
-		return errors.New("tidak ada data untuk dibuat")
-	}
-
-	// Cek apakah user ada
-	var user entity.User
-	result := r.db.First(&user, userID)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return errors.New("user tidak ditemukan")
-		}
-		return result.Error
-	}
-
-	// Update profile
-	result = r.db.Model(&entity.User{}).Where("id = ?", userID).Updates(updates)
-	if result.Error != nil {
-		return result.Error
-	}
-
-	return nil
 }
 

@@ -14,6 +14,7 @@ type PersonalInfo struct {
 	BirthDate *time.Time `gorm:"type:date" json:"birth_date,omitempty"`
 	Phone     *string    `gorm:"type:varchar(15)" json:"phone,omitempty"`
 	Address   *string    `gorm:"type:text" json:"address,omitempty"`
+	PhotoURL  *string    `gorm:"type:text" json:"photo_url,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
