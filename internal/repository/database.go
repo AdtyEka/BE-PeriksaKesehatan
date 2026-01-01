@@ -119,6 +119,10 @@ func runMigrations(db *gorm.DB) error {
 		migrationErrors = append(migrationErrors, fmt.Errorf("migrate personal_infos: %w", err))
 	}
 
+	if err := migrateRemoveUserColumns(db); err != nil {
+		migrationErrors = append(migrationErrors, fmt.Errorf("migrate remove user columns: %w", err))
+	}
+
 	if len(migrationErrors) > 0 {
 		return fmt.Errorf("migration errors: %v", migrationErrors)
 	}
@@ -356,6 +360,66 @@ func ensureUniqueConstraint(db *gorm.DB, tableName, columnName, constraintName s
 
 	log.Printf("[DB] Unique constraint %s berhasil dibuat", constraintName)
 	return nil
+}
+
+// migrateRemoveUserColumns menghapus kolom birth_date, phone, dan address dari tabel users
+// karena kolom-kolom tersebut sudah dipindah ke tabel personal_infos
+// Migration ini idempotent dan aman untuk Supabase/PostgreSQL
+func migrateRemoveUserColumns(db *gorm.DB) error {
+	migrator := db.Migrator()
+
+	if !migrator.HasTable(&entity.User{}) {
+		log.Println("[DB] Tabel users belum ada, skip migration")
+		return nil
+	}
+
+	columnsToRemove := []string{"birth_date", "phone", "address"}
+
+	for _, columnName := range columnsToRemove {
+		if err := dropColumnIfExists(db, "users", columnName); err != nil {
+			log.Printf("[DB] Warning: Gagal menghapus kolom %s.%s: %v", "users", columnName, err)
+			// Continue dengan kolom berikutnya, tidak return error
+		}
+	}
+
+	log.Println("[DB] Migration remove user columns berhasil")
+	return nil
+}
+
+// dropColumnIfExists menghapus kolom jika kolom tersebut ada
+// Fungsi ini idempotent dan aman untuk dipanggil berulang kali
+func dropColumnIfExists(db *gorm.DB, tableName, columnName string) error {
+	migrator := db.Migrator()
+
+	// Cek apakah kolom ada
+	if !migrator.HasColumn(&entity.User{}, columnName) {
+		log.Printf("[DB] Kolom %s.%s tidak ditemukan, skip", tableName, columnName)
+		return nil
+	}
+
+	// Hapus kolom
+	dropSQL := fmt.Sprintf("ALTER TABLE %s DROP COLUMN IF EXISTS %s", tableName, columnName)
+	if err := db.Exec(dropSQL).Error; err != nil {
+		// Cek jika error karena kolom sudah tidak ada
+		if isColumnNotExistsError(err) {
+			log.Printf("[DB] Kolom %s.%s sudah tidak ada, skip", tableName, columnName)
+			return nil
+		}
+		return fmt.Errorf("gagal menghapus kolom %s.%s: %w", tableName, columnName, err)
+	}
+
+	log.Printf("[DB] Kolom %s.%s berhasil dihapus", tableName, columnName)
+	return nil
+}
+
+// isColumnNotExistsError mengecek apakah error karena kolom tidak ada
+func isColumnNotExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errMsg := strings.ToLower(err.Error())
+	return strings.Contains(errMsg, "does not exist") ||
+		strings.Contains(errMsg, "column") && strings.Contains(errMsg, "not found")
 }
 
 // runSeeds menjalankan semua database seeds

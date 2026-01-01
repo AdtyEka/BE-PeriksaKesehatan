@@ -12,9 +12,6 @@ type User struct {
 	// Profil & informasi pribadi
 	PhotoURL  *string     `gorm:"type:text" json:"photo_url,omitempty"`                    // URL foto profil
 	HeightCM  *int        `gorm:"type:int;column:height_cm" json:"height,omitempty"`        // Tinggi badan dalam cm
-	BirthDate *time.Time  `gorm:"column:birth_date" json:"birth_date,omitempty"`            // Tanggal lahir
-	Phone     *string     `gorm:"type:varchar(30)" json:"phone,omitempty"`
-	Address   *string     `gorm:"type:text" json:"address,omitempty"`
 
 	// Pengaturan aplikasi
 	NotificationEnabled *bool   `gorm:"default:true;column:notification_enabled" json:"notification_enabled,omitempty"`

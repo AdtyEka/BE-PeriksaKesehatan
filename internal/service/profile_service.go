@@ -44,8 +44,10 @@ func (s *ProfileService) GetProfile(userID uint) (*response.ProfileResponse, err
 	}
 
 	var age *int
-	if user.BirthDate != nil {
-		calculatedAge := s.calculateAge(*user.BirthDate)
+	// Ambil birth_date dari personal_info jika ada
+	personalInfo, err := s.personalInfoRepo.GetPersonalInfoByUserID(userID)
+	if err == nil && personalInfo != nil && personalInfo.BirthDate != nil {
+		calculatedAge := s.calculateAge(*personalInfo.BirthDate)
 		age = &calculatedAge
 	}
 
@@ -469,13 +471,8 @@ func (s *ProfileService) CreateProfile(userID uint, req *request.CreateProfileRe
 		updates["photo_url"] = *photoURL
 	}
 
-	// Handle age: jika age dikirim, hitung birth_date
-	if req.Age != nil {
-		now := time.Now()
-		birthYear := now.Year() - *req.Age
-		birthDate := time.Date(birthYear, now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-		updates["birth_date"] = birthDate
-	}
+	// Handle age: jika age dikirim, akan di-handle di personal_info
+	// Tidak perlu update birth_date di user table karena sudah dipindah ke personal_info
 
 	// Create profile
 	err = s.userRepo.CreateProfile(userID, updates)
@@ -511,8 +508,10 @@ func (s *ProfileService) CreateProfile(userID uint, req *request.CreateProfileRe
 	}
 
 	var age *int
-	if user.BirthDate != nil {
-		calculatedAge := s.calculateAge(*user.BirthDate)
+	// Ambil birth_date dari personal_info jika ada
+	personalInfo, err := s.personalInfoRepo.GetPersonalInfoByUserID(userID)
+	if err == nil && personalInfo != nil && personalInfo.BirthDate != nil {
+		calculatedAge := s.calculateAge(*personalInfo.BirthDate)
 		age = &calculatedAge
 	} else if req.Age != nil {
 		age = req.Age
