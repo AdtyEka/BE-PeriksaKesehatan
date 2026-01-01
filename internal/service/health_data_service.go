@@ -33,7 +33,7 @@ func NewHealthDataService(healthDataRepo *repository.HealthDataRepository) *Heal
 // Minimal satu metrik kesehatan harus diisi. Jika systolic dikirim, diastolic juga harus dikirim.
 func (s *HealthDataService) ValidateHealthData(req *request.HealthDataRequest) error {
 	if err := utils.RequireAtLeastOneHealthMetric(
-		req.Systolic, req.Diastolic, req.BloodSugar, nil, req.HeartRate, req.Weight,
+		req.Systolic, req.Diastolic, req.BloodSugar, nil, req.HeartRate, req.Weight, req.Height,
 	); err != nil {
 		return err
 	}
@@ -56,6 +56,10 @@ func (s *HealthDataService) ValidateHealthData(req *request.HealthDataRequest) e
 	}
 
 	if err := utils.ValidateNullableFloat64(req.Weight, "weight", 20.0, 200.0); err != nil {
+		return err
+	}
+
+	if err := utils.ValidateNullableInt(req.Height, "height", 50, 250); err != nil {
 		return err
 	}
 
@@ -110,6 +114,11 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 				return nil, err
 			}
 		}
+		if req.Height != nil {
+			if err := utils.ValidateNullableInt(req.Height, "height", 50, 250); err != nil {
+				return nil, err
+			}
+		}
 		if req.HeartRate != nil {
 			if err := utils.ValidateNullableInt(req.HeartRate, "heart_rate", 40, 180); err != nil {
 				return nil, err
@@ -129,6 +138,9 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 		if req.Weight != nil {
 			healthData.Weight = req.Weight
 		}
+		if req.Height != nil {
+			healthData.HeightCM = req.Height
+		}
 		if req.HeartRate != nil {
 			healthData.HeartRate = req.HeartRate
 		}
@@ -138,7 +150,7 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 
 		// Validasi: minimal ada 1 field yang akan di-update
 		hasUpdate := req.Systolic != nil || req.Diastolic != nil || req.BloodSugar != nil || 
-			req.Weight != nil || req.HeartRate != nil || req.Activity != nil
+			req.Weight != nil || req.Height != nil || req.HeartRate != nil || req.Activity != nil
 		if !hasUpdate {
 			return nil, errors.New("minimal satu field harus diisi untuk update")
 		}
@@ -176,6 +188,9 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 		if req.Weight != nil {
 			healthData.Weight = req.Weight
 		}
+		if req.Height != nil {
+			healthData.HeightCM = req.Height
+		}
 		if req.HeartRate != nil {
 			healthData.HeartRate = req.HeartRate
 		}
@@ -200,6 +215,7 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 	resp.Diastolic = healthData.Diastolic
 	resp.BloodSugar = healthData.BloodSugar
 	resp.Weight = healthData.Weight
+	resp.Height = healthData.HeightCM
 	resp.HeartRate = healthData.HeartRate
 	resp.Activity = healthData.Activity
 

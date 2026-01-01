@@ -209,14 +209,14 @@ func (r *UserRepository) GetDB() *gorm.DB {
 
 // CheckProfileExists mengecek apakah user sudah memiliki profile
 // Profile dianggap ada jika user sudah memiliki data profil tambahan
-// seperti photo_url atau height_cm yang diisi (menandakan sudah pernah POST /api/profile)
+// seperti photo_url yang diisi (menandakan sudah pernah POST /api/profile)
 func (r *UserRepository) CheckProfileExists(userID uint) (bool, error) {
 	if userID == 0 {
 		return false, errors.New("ID tidak valid")
 	}
 
 	var user entity.User
-	result := r.db.Select("photo_url", "height_cm").First(&user, userID)
+	result := r.db.Select("photo_url").First(&user, userID)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return false, errors.New("user tidak ditemukan")
@@ -224,12 +224,9 @@ func (r *UserRepository) CheckProfileExists(userID uint) (bool, error) {
 		return false, result.Error
 	}
 
-	// Profile dianggap ada jika user sudah memiliki photo_url atau height_cm
+	// Profile dianggap ada jika user sudah memiliki photo_url
 	// Ini menandakan user sudah pernah membuat profile melalui POST /api/profile
 	if user.PhotoURL != nil && *user.PhotoURL != "" {
-		return true, nil
-	}
-	if user.HeightCM != nil && *user.HeightCM > 0 {
 		return true, nil
 	}
 

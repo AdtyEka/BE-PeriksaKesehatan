@@ -13,6 +13,7 @@ type HealthData struct {
 	Diastolic  *int      `gorm:"not null" json:"diastolic"`              // Tekanan darah diastolik (mmHg) - nullable-ready
 	BloodSugar *int      `gorm:"not null" json:"blood_sugar"`           // Gula darah (mg/dL) - nullable-ready
 	Weight     *float64  `gorm:"not null" json:"weight"`                 // Berat badan (kg) - nullable-ready
+	HeightCM   *int      `gorm:"type:int;column:height_cm" json:"height,omitempty"` // Tinggi badan dalam cm
 	HeartRate  *int      `gorm:"not null" json:"heart_rate"`             // Detak jantung (bpm) - nullable-ready
 	Activity   *string   `gorm:"type:text" json:"activity"`               // Aktivitas terbaru (opsional) - sudah nullable dari awal
 	

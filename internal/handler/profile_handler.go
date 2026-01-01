@@ -2,7 +2,6 @@ package handler
 
 import (
 	"BE-PeriksaKesehatan/internal/model/dto/request"
-	"BE-PeriksaKesehatan/internal/repository"
 	"BE-PeriksaKesehatan/internal/service"
 	"BE-PeriksaKesehatan/pkg/middleware"
 	"BE-PeriksaKesehatan/pkg/utils"
@@ -13,16 +12,13 @@ import (
 
 type ProfileHandler struct {
 	profileService *service.ProfileService
-	authRepo       *repository.AuthRepository
 }
 
 func NewProfileHandler(
 	profileService *service.ProfileService,
-	authRepo *repository.AuthRepository,
 ) *ProfileHandler {
 	return &ProfileHandler{
 		profileService: profileService,
-		authRepo:       authRepo,
 	}
 }
 

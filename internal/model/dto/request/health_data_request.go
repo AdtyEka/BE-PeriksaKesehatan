@@ -27,6 +27,9 @@ type HealthDataRequest struct {
 	// Berat badan (kg) - nullable, validasi: 20-200 jika dikirim
 	Weight *float64 `json:"weight"`
 	
+	// Tinggi badan (cm) - nullable, validasi: 50-250 jika dikirim
+	Height *int `json:"height"`
+	
 	// Detak jantung (bpm) - nullable, validasi: 40-180 jika dikirim
 	HeartRate *int `json:"heart_rate"`
 	

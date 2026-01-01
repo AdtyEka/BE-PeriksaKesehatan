@@ -17,6 +17,7 @@ type HealthDataResponse struct {
 	Diastolic  *int       `json:"diastolic,omitempty"`
 	BloodSugar *int       `json:"blood_sugar,omitempty"`
 	Weight     *float64   `json:"weight,omitempty"`
+	Height     *int       `json:"height,omitempty"`
 	HeartRate  *int       `json:"heart_rate,omitempty"`
 	Activity   *string    `json:"activity,omitempty"`
 	

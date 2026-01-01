@@ -11,7 +11,6 @@ type User struct {
 	Password    string       `gorm:"type:varchar(255);not null" json:"-"`
 	// Profil & informasi pribadi
 	PhotoURL  *string     `gorm:"type:text" json:"photo_url,omitempty"`                    // URL foto profil
-	HeightCM  *int        `gorm:"type:int;column:height_cm" json:"height,omitempty"`        // Tinggi badan dalam cm
 
 	// Pengaturan aplikasi
 	NotificationEnabled *bool   `gorm:"default:true;column:notification_enabled" json:"notification_enabled,omitempty"`

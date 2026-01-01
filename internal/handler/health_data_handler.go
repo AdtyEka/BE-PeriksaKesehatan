@@ -98,6 +98,7 @@ func (h *HealthDataHandler) GetHealthDataByUserID(c *gin.Context) {
 		Diastolic:  healthData.Diastolic,
 		BloodSugar: healthData.BloodSugar,
 		Weight:     healthData.Weight,
+		Height:     healthData.HeightCM,
 		HeartRate:  healthData.HeartRate,
 		Activity:   healthData.Activity,
 		CreatedAt:  healthData.CreatedAt,

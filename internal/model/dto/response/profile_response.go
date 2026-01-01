@@ -6,7 +6,7 @@ type ProfileResponse struct {
 	Email    string   `json:"email"`
 	PhotoURL *string  `json:"photo_url,omitempty"`
 	Weight   *float64 `json:"weight"` // dari health_data terbaru (bisa null)
-	Height   *int     `json:"height"` // dari profil user (bisa null)
+	Height   *int     `json:"height"` // dari health_data terbaru (bisa null)
 	Age      *int     `json:"age"`    // dihitung dari birth_date (bisa null)
 }
 

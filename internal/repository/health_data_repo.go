@@ -120,6 +120,9 @@ func (r *HealthDataRepository) UpdateHealthData(healthData *entity.HealthData) e
 	if healthData.Weight != nil {
 		updates["weight"] = *healthData.Weight
 	}
+	if healthData.HeightCM != nil {
+		updates["height_cm"] = *healthData.HeightCM
+	}
 	if healthData.HeartRate != nil {
 		updates["heart_rate"] = *healthData.HeartRate
 	}

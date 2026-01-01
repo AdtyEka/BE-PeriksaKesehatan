@@ -32,7 +32,7 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 	healthDataHandler := NewHealthDataHandler(healthDataService, authRepo)
 	healthAlertHandler := NewHealthAlertHandler(healthAlertService, authRepo)
 	educationalVideoHandler := NewEducationalVideoHandler(educationalVideoService)
-	profileHandler := NewProfileHandler(profileService, authRepo)
+	profileHandler := NewProfileHandler(profileService)
 
 	api := router.Group("/api")
 	{

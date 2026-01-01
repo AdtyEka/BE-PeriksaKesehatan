@@ -55,12 +55,31 @@ func (s *ProfileService) GetProfile(userID uint) (*response.ProfileResponse, err
 		Name:     user.Nama,
 		Email:    user.Email,
 		PhotoURL: user.PhotoURL,
-		Height:   user.HeightCM,
 		Age:      age,
 	}
 
-	if latestHealthData != nil && latestHealthData.Weight != nil {
-		resp.Weight = latestHealthData.Weight
+	// Set weight dan height dari health_data jika ada
+	if latestHealthData != nil {
+		if latestHealthData.Weight != nil {
+			resp.Weight = latestHealthData.Weight
+		} else {
+			// Default 0 jika tidak ada
+			zeroWeight := 0.0
+			resp.Weight = &zeroWeight
+		}
+		if latestHealthData.HeightCM != nil {
+			resp.Height = latestHealthData.HeightCM
+		} else {
+			// Default 0 jika tidak ada
+			zeroHeight := 0
+			resp.Height = &zeroHeight
+		}
+	} else {
+		// Default 0 jika tidak ada health_data
+		zeroWeight := 0.0
+		zeroHeight := 0
+		resp.Weight = &zeroWeight
+		resp.Height = &zeroHeight
 	}
 
 	return resp, nil
@@ -79,15 +98,47 @@ func (s *ProfileService) UpdateProfile(userID uint, req *request.UpdateProfileRe
 	if req.PhotoURL != nil {
 		updates["photo_url"] = *req.PhotoURL
 	}
-	if req.Height != nil {
-		updates["height_cm"] = *req.Height
+
+	// Update user profile jika ada perubahan
+	if len(updates) > 0 {
+		err = s.userRepo.UpdateUserProfile(userID, updates)
+		if err != nil {
+			return err
+		}
 	}
 
-	if len(updates) == 0 {
+	// Update height di health_data
+	if req.Height != nil {
+		latestHealthData, err := s.healthDataRepo.GetLatestHealthDataByUserID(userID)
+		if err != nil {
+			return err
+		}
+
+		if latestHealthData != nil {
+			// Update health_data yang sudah ada
+			latestHealthData.HeightCM = req.Height
+			err = s.healthDataRepo.UpdateHealthData(latestHealthData)
+			if err != nil {
+				return err
+			}
+		} else {
+			// Buat health_data baru jika belum ada
+			healthData := &entity.HealthData{
+				UserID:   userID,
+				HeightCM: req.Height,
+			}
+			err = s.healthDataRepo.CreateHealthData(healthData)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if len(updates) == 0 && req.Height == nil {
 		return errors.New("tidak ada data untuk diupdate")
 	}
 
-	return s.userRepo.UpdateUserProfile(userID, updates)
+	return nil
 }
 
 func (s *ProfileService) GetPersonalInfo(userID uint) (*response.PersonalInfoResponse, error) {
@@ -464,9 +515,6 @@ func (s *ProfileService) CreateProfile(userID uint, req *request.CreateProfileRe
 	updates["nama"] = req.Name
 	updates["email"] = req.Email
 
-	if req.Height != nil {
-		updates["height_cm"] = *req.Height
-	}
 	if photoURL != nil && *photoURL != "" {
 		updates["photo_url"] = *photoURL
 	}
@@ -480,17 +528,22 @@ func (s *ProfileService) CreateProfile(userID uint, req *request.CreateProfileRe
 		return nil, err
 	}
 
-	// Jika weight dikirim, buat health_data
-	if req.Weight != nil {
+	// Jika weight atau height dikirim, buat atau update health_data
+	if req.Weight != nil || req.Height != nil {
 		healthData := &entity.HealthData{
 			UserID: userID,
-			Weight: req.Weight,
+		}
+		if req.Weight != nil {
+			healthData.Weight = req.Weight
+		}
+		if req.Height != nil {
+			healthData.HeightCM = req.Height
 		}
 		err = s.healthDataRepo.CreateHealthData(healthData)
 		if err != nil {
 			// Rollback: hapus profile yang sudah dibuat
 			// Untuk sekarang, kita biarkan error ini, atau bisa di-handle dengan transaction
-			return nil, fmt.Errorf("gagal menyimpan weight: %w", err)
+			return nil, fmt.Errorf("gagal menyimpan health data: %w", err)
 		}
 	}
 
@@ -521,30 +574,35 @@ func (s *ProfileService) CreateProfile(userID uint, req *request.CreateProfileRe
 		age = &zeroAge
 	}
 
-	// Set height, default 0 jika tidak ada
-	var height *int
-	if user.HeightCM != nil {
-		height = user.HeightCM
-	} else {
-		zeroHeight := 0
-		height = &zeroHeight
-	}
-
 	resp := &response.ProfileResponse{
 		Name:     user.Nama,
 		Email:    user.Email,
 		PhotoURL: user.PhotoURL,
-		Height:   height,
 		Age:      age,
 	}
 
-	// Set weight dari health_data jika ada
-	if latestHealthData != nil && latestHealthData.Weight != nil {
-		resp.Weight = latestHealthData.Weight
+	// Set weight dan height dari health_data jika ada
+	if latestHealthData != nil {
+		if latestHealthData.Weight != nil {
+			resp.Weight = latestHealthData.Weight
+		} else {
+			// Default 0 jika tidak ada
+			zeroWeight := 0.0
+			resp.Weight = &zeroWeight
+		}
+		if latestHealthData.HeightCM != nil {
+			resp.Height = latestHealthData.HeightCM
+		} else {
+			// Default 0 jika tidak ada
+			zeroHeight := 0
+			resp.Height = &zeroHeight
+		}
 	} else {
-		// Default 0 jika tidak ada
+		// Default 0 jika tidak ada health_data
 		zeroWeight := 0.0
+		zeroHeight := 0
 		resp.Weight = &zeroWeight
+		resp.Height = &zeroHeight
 	}
 
 	return resp, nil

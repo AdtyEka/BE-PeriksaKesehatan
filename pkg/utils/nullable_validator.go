@@ -84,6 +84,7 @@ func RequireAtLeastOneField(fieldNames []string, fields ...*interface{}) error {
 func RequireAtLeastOneHealthMetric(
 	systolic, diastolic, bloodSugar, weight, heartRate *int,
 	weightFloat *float64,
+	height *int,
 ) error {
 	hasAtLeastOne := false
 
@@ -96,12 +97,15 @@ func RequireAtLeastOneHealthMetric(
 	if weight != nil || weightFloat != nil {
 		hasAtLeastOne = true
 	}
+	if height != nil {
+		hasAtLeastOne = true
+	}
 	if heartRate != nil {
 		hasAtLeastOne = true
 	}
 
 	if !hasAtLeastOne {
-		return errors.New("minimal satu metrik kesehatan harus diisi (systolic/diastolic, blood_sugar, weight, atau heart_rate)")
+		return errors.New("minimal satu metrik kesehatan harus diisi (systolic/diastolic, blood_sugar, weight, height, atau heart_rate)")
 	}
 
 	return nil
