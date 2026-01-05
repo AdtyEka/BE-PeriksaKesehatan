@@ -40,6 +40,15 @@ func (s *HealthDataService) GetHealthHistory(userID uint, req *request.HealthHis
 	// Catatan pembacaan
 	result.ReadingHistory = s.buildReadingHistory(filteredData)
 
+	// Video edukasi berdasarkan kondisi kesehatan
+	educationVideos, err := s.getEducationVideos(result.Summary)
+	if err != nil {
+		// Fail-safe: jika error, set array kosong
+		result.EducationVideos = []response.EducationVideoCategory{}
+	} else {
+		result.EducationVideos = educationVideos
+	}
+
 	return result, nil
 }
 

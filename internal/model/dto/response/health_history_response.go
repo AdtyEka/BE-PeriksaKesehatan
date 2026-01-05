@@ -4,9 +4,10 @@ import "time"
 
 // HealthHistoryResponse adalah response utama untuk riwayat kesehatan
 type HealthHistoryResponse struct {
-	Summary      HealthSummaryResponse      `json:"summary"`       // Ringkasan statistik
-	TrendCharts  TrendChartsResponse        `json:"trend_charts"`  // Data grafik tren
-	ReadingHistory []ReadingHistoryResponse `json:"reading_history"` // Catatan pembacaan kronologis
+	Summary         HealthSummaryResponse      `json:"summary"`           // Ringkasan statistik
+	TrendCharts     TrendChartsResponse        `json:"trend_charts"`       // Data grafik tren
+	ReadingHistory  []ReadingHistoryResponse    `json:"reading_history"`   // Catatan pembacaan kronologis
+	EducationVideos []EducationVideoCategory   `json:"education_videos"`   // Video edukasi berdasarkan kondisi kesehatan
 }
 
 // HealthSummaryResponse berisi ringkasan statistik untuk semua metrik
@@ -93,5 +94,21 @@ type ReadingHistoryResponse struct {
 	Context     *string   `json:"context"`      // Konteks (puasa, setelah makan, dll)
 	Status      string    `json:"status"`       // Status: Normal / Perhatian / Abnormal
 	Notes       *string   `json:"notes"`        // Catatan tambahan
+}
+
+// EducationVideoCategory adalah kategori video edukasi beserta videonya
+type EducationVideoCategory struct {
+	KategoriID uint                    `json:"kategori_id"` // ID kategori
+	Kategori   string                  `json:"kategori"`     // Nama kategori
+	Videos     []EducationVideoItem    `json:"videos"`       // Daftar video dalam kategori
+}
+
+// EducationVideoItem adalah item video edukasi
+type EducationVideoItem struct {
+	ID        uint   `json:"id"`        // ID video
+	Title     string `json:"title"`     // Judul video
+	URL       string `json:"url"`       // URL video
+	Thumbnail string `json:"thumbnail"` // URL thumbnail (kosong jika tidak tersedia)
+	Duration  int    `json:"duration"`  // Durasi dalam detik (0 jika tidak tersedia)
 }
 

@@ -20,7 +20,7 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 	healthTargetRepo := repository.NewHealthTargetRepository(userRepo.GetDB())
 	personalInfoRepo := repository.NewPersonalInfoRepository(userRepo.GetDB())
 
-	healthDataService := service.NewHealthDataService(healthDataRepo)
+	healthDataService := service.NewHealthDataService(healthDataRepo, educationalVideoRepo, categoryRepo)
 	healthAlertService := service.NewHealthAlertService(healthAlertRepo, healthDataRepo)
 	educationalVideoService := service.NewEducationalVideoService(educationalVideoRepo, categoryRepo)
 	profileService := service.NewProfileService(userRepo, healthDataRepo, healthTargetRepo, personalInfoRepo)
