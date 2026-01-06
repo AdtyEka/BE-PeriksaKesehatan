@@ -42,3 +42,16 @@ func (r *CategoryRepository) GetCategoryByID(id uint) (*entity.Category, error) 
 	return &category, nil
 }
 
+// GetCategoryByKategori mengambil kategori berdasarkan nama kategori
+func (r *CategoryRepository) GetCategoryByKategori(kategori string) (*entity.Category, error) {
+	var category entity.Category
+	result := r.db.Where("kategori = ?", kategori).First(&category)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("kategori tidak ditemukan")
+		}
+		return nil, result.Error
+	}
+	return &category, nil
+}
+

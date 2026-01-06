@@ -72,3 +72,16 @@ func (r *EducationalVideoRepository) GetAllEducationalVideosByCategoryIDs(catego
 	return videosByCategory, nil
 }
 
+// GetEducationalVideosByCategoryKategori mengambil video berdasarkan nama kategori
+func (r *EducationalVideoRepository) GetEducationalVideosByCategoryKategori(kategori string) ([]entity.EducationalVideo, error) {
+	var videos []entity.EducationalVideo
+	result := r.db.Joins("JOIN categories ON categories.id = educational_videos.category_id").
+		Where("categories.kategori = ?", kategori).
+		Order("educational_videos.created_at DESC").
+		Find(&videos)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return videos, nil
+}
+

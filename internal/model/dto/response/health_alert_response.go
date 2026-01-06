@@ -2,15 +2,26 @@ package response
 
 import "time"
 
+// EducationVideoItem adalah item video edukasi dalam alert
+type EducationVideoItem struct {
+	ID    uint   `json:"id"`
+	Title string `json:"title"`
+	URL   string `json:"url"`
+}
+
 // HealthAlertResponse adalah response untuk health alert
 type HealthAlertResponse struct {
-	AlertType      string    `json:"alert_type"`
-	Value          string    `json:"value"`
-	Label          string    `json:"label"`
-	Message        string    `json:"message"`
-	Status         string    `json:"status"`
-	Recommendations []string `json:"recommendations"`
-	RecordedAt     time.Time `json:"recorded_at"`
+	AlertType        string              `json:"alert_type"`
+	Category         string              `json:"category"`
+	Value            string              `json:"value"`
+	Label            string              `json:"label"`
+	Status           string              `json:"status"`
+	RecordedAt       time.Time           `json:"recorded_at"`
+	Explanation      string              `json:"explanation"`
+	ImmediateActions []string            `json:"immediate_actions"`
+	MedicalAttention []string            `json:"medical_attention"`
+	ManagementTips   []string            `json:"management_tips"`
+	EducationVideos  []EducationVideoItem `json:"education_videos"`
 }
 
 // CheckHealthAlertsResponse adalah response untuk endpoint check-health-alerts

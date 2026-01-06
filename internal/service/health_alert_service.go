@@ -1,69 +1,86 @@
 package service
 
 import (
-	"BE-PeriksaKesehatan/internal/model/dto/request"
 	"BE-PeriksaKesehatan/internal/model/dto/response"
-	"BE-PeriksaKesehatan/internal/model/entity"
 	"BE-PeriksaKesehatan/internal/repository"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"log"
 	"time"
 )
 
+// Kategori konstan
+const (
+	CategoryDiabetes   = "diabetes"
+	CategoryHipertensi = "hipertensi"
+	CategoryJantung    = "jantung"
+)
+
+// Status konstan
+const (
+	StatusNormal   = "Normal"
+	StatusHigh     = "High"
+	StatusLow      = "Low"
+	StatusCritical = "Critical"
+)
+
 type HealthAlertService struct {
-	healthAlertRepo *repository.HealthAlertRepository
-	healthDataRepo  *repository.HealthDataRepository
+	healthAlertRepo        *repository.HealthAlertRepository
+	healthDataRepo         *repository.HealthDataRepository
+	educationalVideoRepo   *repository.EducationalVideoRepository
+	categoryRepo           *repository.CategoryRepository
 }
 
-func NewHealthAlertService(healthAlertRepo *repository.HealthAlertRepository, healthDataRepo *repository.HealthDataRepository) *HealthAlertService {
+func NewHealthAlertService(
+	healthAlertRepo *repository.HealthAlertRepository,
+	healthDataRepo *repository.HealthDataRepository,
+	educationalVideoRepo *repository.EducationalVideoRepository,
+	categoryRepo *repository.CategoryRepository,
+) *HealthAlertService {
 	return &HealthAlertService{
-		healthAlertRepo: healthAlertRepo,
-		healthDataRepo:  healthDataRepo,
+		healthAlertRepo:      healthAlertRepo,
+		healthDataRepo:       healthDataRepo,
+		educationalVideoRepo: educationalVideoRepo,
+		categoryRepo:         categoryRepo,
 	}
 }
 
-func (s *HealthAlertService) CheckHealthAlerts(userID uint, req *request.HealthAlertRequest) (*response.CheckHealthAlertsResponse, error) {
-	if err := s.validateHealthAlertData(req); err != nil {
-		return nil, err
+// CheckHealthAlerts mengambil data kesehatan terbaru dari database dan mengevaluasi alerts
+func (s *HealthAlertService) CheckHealthAlerts(userID uint) (*response.CheckHealthAlertsResponse, error) {
+	// Ambil data kesehatan terbaru dari database
+	latestHealthData, err := s.healthDataRepo.GetLatestHealthDataByUserID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("gagal mengambil data kesehatan: %w", err)
+	}
+
+	// Jika tidak ada data kesehatan, return empty alerts
+	if latestHealthData == nil {
+		return &response.CheckHealthAlertsResponse{
+			Alerts: []response.HealthAlertResponse{},
+		}, nil
 	}
 
 	var alerts []response.HealthAlertResponse
 
-	if req.Systolic > 140 || req.Diastolic > 90 {
-		alert := s.createBloodPressureAlert(req)
-		alerts = append(alerts, alert)
-		
-		if err := s.saveAlertToDB(userID, alert, req.RecordedAt); err != nil {
-			log.Printf("[HealthAlert] Warning: Gagal menyimpan alert tekanan darah untuk user %d: %v", userID, err)
+	// Evaluasi kategori hipertensi
+	if latestHealthData.Systolic != nil && latestHealthData.Diastolic != nil {
+		alert := s.evaluateBloodPressure(*latestHealthData.Systolic, *latestHealthData.Diastolic, latestHealthData.CreatedAt)
+		if alert != nil {
+			alerts = append(alerts, *alert)
 		}
 	}
 
-	if req.BloodSugar < 70 {
-		alert := s.createLowBloodSugarAlert(req)
-		alerts = append(alerts, alert)
-		
-		if err := s.saveAlertToDB(userID, alert, req.RecordedAt); err != nil {
-			log.Printf("[HealthAlert] Warning: Gagal menyimpan alert gula darah rendah untuk user %d: %v", userID, err)
-		}
-	} else if req.BloodSugar > 100 {
-		alert := s.createHighBloodSugarAlert(req)
-		alerts = append(alerts, alert)
-		
-		if err := s.saveAlertToDB(userID, alert, req.RecordedAt); err != nil {
-			log.Printf("[HealthAlert] Warning: Gagal menyimpan alert gula darah tinggi untuk user %d: %v", userID, err)
+	// Evaluasi kategori diabetes
+	if latestHealthData.BloodSugar != nil {
+		alert := s.evaluateBloodSugar(*latestHealthData.BloodSugar, latestHealthData.CreatedAt)
+		if alert != nil {
+			alerts = append(alerts, *alert)
 		}
 	}
 
-	weightAlert, err := s.checkWeightLoss(userID, req.Weight, req.RecordedAt)
-	if err != nil {
-		log.Printf("[HealthAlert] Warning: Gagal memeriksa penurunan berat badan untuk user %d: %v", userID, err)
-	} else if weightAlert != nil {
-		alerts = append(alerts, *weightAlert)
-		
-		if err := s.saveAlertToDB(userID, *weightAlert, req.RecordedAt); err != nil {
-			log.Printf("[HealthAlert] Warning: Gagal menyimpan alert penurunan berat badan untuk user %d: %v", userID, err)
+	// Evaluasi kategori jantung
+	if latestHealthData.HeartRate != nil {
+		alert := s.evaluateHeartRate(*latestHealthData.HeartRate, latestHealthData.CreatedAt)
+		if alert != nil {
+			alerts = append(alerts, *alert)
 		}
 	}
 
@@ -72,156 +89,332 @@ func (s *HealthAlertService) CheckHealthAlerts(userID uint, req *request.HealthA
 	}, nil
 }
 
-func (s *HealthAlertService) validateHealthAlertData(req *request.HealthAlertRequest) error {
-	if req.Systolic <= 0 || req.Systolic > 300 {
-		return errors.New("systolic harus valid (1-300 mmHg)")
-	}
-	if req.Diastolic <= 0 || req.Diastolic > 200 {
-		return errors.New("diastolic harus valid (1-200 mmHg)")
-	}
-	if req.BloodSugar <= 0 || req.BloodSugar > 1000 {
-		return errors.New("blood_sugar harus valid (1-1000 mg/dL)")
-	}
-	if req.Weight <= 0 || req.Weight > 500 {
-		return errors.New("weight harus valid (1-500 kg)")
-	}
-	return nil
-}
-
-func (s *HealthAlertService) createBloodPressureAlert(req *request.HealthAlertRequest) response.HealthAlertResponse {
-	value := fmt.Sprintf("%d / %d mmHg", req.Systolic, req.Diastolic)
-	message := fmt.Sprintf("Tekanan Darah Anda %s — segera konsultasi dengan dokter.", value)
-	
-	recommendations := []string{
-		"Konsultasikan dengan dokter.",
-		"Kurangi konsumsi garam.",
-		"Monitor tekanan darah secara rutin.",
+// evaluateBloodPressure mengevaluasi tekanan darah dan mengembalikan alert jika tidak normal
+func (s *HealthAlertService) evaluateBloodPressure(systolic, diastolic int, recordedAt time.Time) *response.HealthAlertResponse {
+	status := s.getBloodPressureStatus(systolic, diastolic)
+	if status == StatusNormal {
+		return nil
 	}
 
-	return response.HealthAlertResponse{
-		AlertType:      "Tekanan Darah Tinggi",
-		Value:          value,
-		Label:          "Hipertensi",
-		Message:        message,
-		Status:         string(entity.AlertStatusHigh),
-		Recommendations: recommendations,
-		RecordedAt:     req.RecordedAt,
-	}
-}
+	value := fmt.Sprintf("%d / %d mmHg", systolic, diastolic)
+	var alertType, label, explanation string
+	var immediateActions, medicalAttention, managementTips []string
 
-func (s *HealthAlertService) createLowBloodSugarAlert(req *request.HealthAlertRequest) response.HealthAlertResponse {
-	value := fmt.Sprintf("%d mg/dL", req.BloodSugar)
-	message := fmt.Sprintf("Gula Darah Anda %s — kondisi ini memerlukan perhatian segera.", value)
-	
-	recommendations := []string{
-		"Segera konsumsi makanan atau minuman manis.",
-		"Monitor gula darah secara rutin.",
-		"Konsultasikan dengan dokter jika sering terjadi.",
-	}
-
-	return response.HealthAlertResponse{
-		AlertType:      "Gula Darah Rendah",
-		Value:          value,
-		Label:          "Hipoglikemia",
-		Message:        message,
-		Status:         string(entity.AlertStatusCritical),
-		Recommendations: recommendations,
-		RecordedAt:     req.RecordedAt,
-	}
-}
-
-func (s *HealthAlertService) createHighBloodSugarAlert(req *request.HealthAlertRequest) response.HealthAlertResponse {
-	value := fmt.Sprintf("%d mg/dL", req.BloodSugar)
-	message := fmt.Sprintf("Gula Darah Anda %s — perhatikan pola makan dan aktivitas fisik.", value)
-	
-	recommendations := []string{
-		"Kurangi konsumsi gula dan karbohidrat.",
-		"Tingkatkan aktivitas fisik.",
-		"Konsultasikan dengan dokter.",
-		"Monitor gula darah secara rutin.",
-	}
-
-	return response.HealthAlertResponse{
-		AlertType:      "Gula Darah Tinggi",
-		Value:          value,
-		Label:          "Hiperglikemia",
-		Message:        message,
-		Status:         string(entity.AlertStatusHigh),
-		Recommendations: recommendations,
-		RecordedAt:     req.RecordedAt,
-	}
-}
-
-func (s *HealthAlertService) checkWeightLoss(userID uint, currentWeight float64, recordedAt time.Time) (*response.HealthAlertResponse, error) {
-	beforeTime := recordedAt.Add(-24 * time.Hour)
-	recentData, err := s.healthAlertRepo.GetRecentWeightData(userID, beforeTime, 5)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(recentData) == 0 {
-		return nil, nil
-	}
-
-	var sumWeight float64
-	var validCount int
-	for _, data := range recentData {
-		if data.Weight != nil {
-			sumWeight += *data.Weight
-			validCount++
+	if systolic >= 180 || diastolic >= 120 {
+		// Hipertensi krisis
+		alertType = "Tekanan Darah Sangat Tinggi"
+		label = "Hipertensi Krisis"
+		explanation = "Tekanan darah Anda berada pada tingkat krisis dan memerlukan perhatian medis segera. Kondisi ini dapat menyebabkan kerusakan organ."
+		immediateActions = []string{
+			"Segera hubungi layanan darurat medis",
+			"Duduk atau berbaring dengan tenang",
+			"Hindari aktivitas fisik yang berat",
 		}
-	}
-	
-	if validCount == 0 {
-		return nil, nil
-	}
-	
-	avgPreviousWeight := sumWeight / float64(validCount)
-	if avgPreviousWeight == 0 {
-		return nil, nil
-	}
-	
-	weightLossPercent := ((avgPreviousWeight - currentWeight) / avgPreviousWeight) * 100
-
-	if weightLossPercent > 5.0 {
-		value := fmt.Sprintf("%.2f kg (dari %.2f kg)", currentWeight, avgPreviousWeight)
-		message := fmt.Sprintf("Terjadi penurunan berat badan signifikan (%.2f%%) dalam waktu singkat — perhatikan kondisi kesehatan Anda.", weightLossPercent)
-		
-		recommendations := []string{
-			"Konsultasikan dengan dokter untuk evaluasi.",
-			"Pastikan asupan nutrisi yang cukup.",
-			"Monitor berat badan secara rutin.",
+		medicalAttention = []string{
+			"Segera ke unit gawat darurat",
+			"Jika disertai nyeri dada, sesak napas, atau gangguan penglihatan",
 		}
-
-		return &response.HealthAlertResponse{
-			AlertType:      "Penurunan Berat Badan",
-			Value:          value,
-			Label:          "Penurunan Berat Badan Signifikan",
-			Message:        message,
-			Status:         string(entity.AlertStatusModerate),
-			Recommendations: recommendations,
-			RecordedAt:     recordedAt,
-		}, nil
+		managementTips = []string{
+			"Konsultasi rutin dengan dokter untuk pengobatan",
+			"Pantau tekanan darah setiap hari",
+			"Hindari garam dan makanan tinggi natrium",
+		}
+	} else if systolic >= 140 || diastolic >= 90 {
+		// Hipertensi
+		alertType = "Tekanan Darah Tinggi"
+		label = "Hipertensi"
+		explanation = "Tekanan darah Anda berada di atas batas normal dan dapat meningkatkan risiko stroke, serangan jantung, dan penyakit ginjal."
+		immediateActions = []string{
+			"Duduk atau berbaring dengan tenang",
+			"Hindari garam dan kafein",
+			"Lakukan relaksasi pernapasan dalam",
+		}
+		medicalAttention = []string{
+			"Jika tekanan darah tetap tinggi setelah 1 jam",
+			"Jika disertai nyeri dada atau pusing berat",
+			"Konsultasi dengan dokter dalam 24 jam",
+		}
+		managementTips = []string{
+			"Batasi konsumsi garam maksimal 5 gram per hari",
+			"Olahraga rutin minimal 30 menit per hari",
+			"Pertahankan berat badan ideal",
+			"Hindari merokok dan alkohol",
+		}
+	} else if systolic < 90 || diastolic < 60 {
+		// Hipotensi
+		alertType = "Tekanan Darah Rendah"
+		label = "Hipotensi"
+		explanation = "Tekanan darah Anda berada di bawah batas normal. Kondisi ini dapat menyebabkan pusing, lemas, atau pingsan."
+		immediateActions = []string{
+			"Berbaring dengan kaki lebih tinggi dari kepala",
+			"Minum air putih yang cukup",
+			"Hindari berdiri terlalu cepat",
+		}
+		medicalAttention = []string{
+			"Jika disertai pingsan atau kehilangan kesadaran",
+			"Jika terjadi secara tiba-tiba dan berulang",
+			"Konsultasi dengan dokter jika gejala menetap",
+		}
+		managementTips = []string{
+			"Tingkatkan asupan cairan",
+			"Konsumsi makanan bergizi seimbang",
+			"Hindari berdiri terlalu lama",
+			"Tidur dengan bantal lebih tinggi",
+		}
+	} else {
+		return nil
 	}
 
-	return nil, nil
+	// Ambil video edukasi
+	videos := s.getEducationVideosByCategory(CategoryHipertensi)
+
+	return &response.HealthAlertResponse{
+		AlertType:        alertType,
+		Category:         CategoryHipertensi,
+		Value:            value,
+		Label:            label,
+		Status:           status,
+		RecordedAt:       recordedAt,
+		Explanation:      explanation,
+		ImmediateActions: immediateActions,
+		MedicalAttention: medicalAttention,
+		ManagementTips:   managementTips,
+		EducationVideos:  videos,
+	}
 }
 
-func (s *HealthAlertService) saveAlertToDB(userID uint, alert response.HealthAlertResponse, recordedAt time.Time) error {
-	recommendationsJSON, err := json.Marshal(alert.Recommendations)
+// evaluateBloodSugar mengevaluasi gula darah dan mengembalikan alert jika tidak normal
+func (s *HealthAlertService) evaluateBloodSugar(bloodSugar int, recordedAt time.Time) *response.HealthAlertResponse {
+	status := s.getBloodSugarStatus(bloodSugar)
+	if status == StatusNormal {
+		return nil
+	}
+
+	value := fmt.Sprintf("%d mg/dL", bloodSugar)
+	var alertType, label, explanation string
+	var immediateActions, medicalAttention, managementTips []string
+
+	if bloodSugar < 70 {
+		// Hipoglikemia
+		alertType = "Gula Darah Rendah"
+		label = "Hipoglikemia"
+		explanation = "Gula darah Anda berada di bawah batas normal. Kondisi ini memerlukan perhatian segera karena dapat menyebabkan pingsan, kejang, atau koma."
+		immediateActions = []string{
+			"Segera konsumsi 15-20 gram gula sederhana (permen, jus buah, atau tablet glukosa)",
+			"Tunggu 15 menit dan periksa kembali gula darah",
+			"Jika masih rendah, ulangi konsumsi gula",
+		}
+		medicalAttention = []string{
+			"Jika tidak sadar atau tidak bisa menelan",
+			"Jika gula darah tidak naik setelah 2 kali konsumsi gula",
+			"Jika disertai kejang atau kehilangan kesadaran",
+		}
+		managementTips = []string{
+			"Makan teratur dengan porsi kecil tapi sering",
+			"Selalu siapkan camilan manis untuk keadaan darurat",
+			"Monitor gula darah secara rutin",
+			"Konsultasi dengan dokter untuk penyesuaian obat",
+		}
+	} else if bloodSugar > 200 {
+		// Hiperglikemia berat
+		alertType = "Gula Darah Sangat Tinggi"
+		label = "Hiperglikemia Berat"
+		explanation = "Gula darah Anda sangat tinggi dan dapat menyebabkan komplikasi serius seperti ketoasidosis diabetik atau sindrom hiperosmolar hiperglikemik."
+		immediateActions = []string{
+			"Minum air putih yang cukup untuk mencegah dehidrasi",
+			"Hindari makanan dan minuman manis",
+			"Monitor gejala seperti mual, muntah, atau sesak napas",
+		}
+		medicalAttention = []string{
+			"Segera ke unit gawat darurat jika disertai mual, muntah, atau sesak napas",
+			"Konsultasi dengan dokter dalam 24 jam",
+			"Jika ada keton dalam urine (untuk penderita diabetes)",
+		}
+		managementTips = []string{
+			"Kurangi konsumsi karbohidrat dan gula",
+			"Tingkatkan aktivitas fisik secara bertahap",
+			"Konsultasi dengan dokter untuk penyesuaian pengobatan",
+			"Pantau gula darah secara rutin",
+		}
+	} else if bloodSugar > 100 {
+		// Hiperglikemia ringan-sedang
+		alertType = "Gula Darah Tinggi"
+		label = "Hiperglikemia"
+		explanation = "Gula darah Anda berada di atas batas normal. Jika berlangsung lama, dapat meningkatkan risiko komplikasi diabetes seperti kerusakan saraf, ginjal, dan mata."
+		immediateActions = []string{
+			"Hindari makanan dan minuman manis",
+			"Lakukan aktivitas fisik ringan jika memungkinkan",
+			"Minum air putih yang cukup",
+		}
+		medicalAttention = []string{
+			"Jika gula darah tetap tinggi setelah beberapa hari",
+			"Jika disertai gejala seperti sering haus, sering buang air kecil, atau lemas",
+			"Konsultasi dengan dokter untuk evaluasi",
+		}
+		managementTips = []string{
+			"Batasi konsumsi karbohidrat dan gula",
+			"Pilih karbohidrat kompleks (nasi merah, roti gandum)",
+			"Olahraga rutin minimal 30 menit per hari",
+			"Pertahankan berat badan ideal",
+			"Monitor gula darah secara rutin",
+		}
+	} else {
+		return nil
+	}
+
+	// Ambil video edukasi
+	videos := s.getEducationVideosByCategory(CategoryDiabetes)
+
+	return &response.HealthAlertResponse{
+		AlertType:        alertType,
+		Category:         CategoryDiabetes,
+		Value:            value,
+		Label:            label,
+		Status:           status,
+		RecordedAt:       recordedAt,
+		Explanation:      explanation,
+		ImmediateActions: immediateActions,
+		MedicalAttention: medicalAttention,
+		ManagementTips:   managementTips,
+		EducationVideos:  videos,
+	}
+}
+
+// evaluateHeartRate mengevaluasi detak jantung dan mengembalikan alert jika tidak normal
+func (s *HealthAlertService) evaluateHeartRate(heartRate int, recordedAt time.Time) *response.HealthAlertResponse {
+	status := s.getHeartRateStatus(heartRate)
+	if status == StatusNormal {
+		return nil
+	}
+
+	value := fmt.Sprintf("%d bpm", heartRate)
+	var alertType, label, explanation string
+	var immediateActions, medicalAttention, managementTips []string
+
+	if heartRate < 60 {
+		// Bradikardia
+		alertType = "Detak Jantung Lambat"
+		label = "Bradikardia"
+		explanation = "Detak jantung Anda berada di bawah batas normal. Kondisi ini dapat menyebabkan kelelahan, pusing, atau pingsan karena jantung tidak memompa cukup darah ke seluruh tubuh."
+		immediateActions = []string{
+			"Berbaring atau duduk dengan tenang",
+			"Hindari aktivitas fisik yang berat",
+			"Monitor gejala seperti pusing atau sesak napas",
+		}
+		medicalAttention = []string{
+			"Jika disertai pingsan atau kehilangan kesadaran",
+			"Jika disertai nyeri dada atau sesak napas",
+			"Jika terjadi secara tiba-tiba",
+			"Konsultasi dengan dokter untuk evaluasi",
+		}
+		managementTips = []string{
+			"Konsultasi dengan dokter untuk pemeriksaan jantung",
+			"Hindari konsumsi kafein berlebihan",
+			"Olahraga ringan secara teratur",
+			"Monitor detak jantung secara rutin",
+		}
+	} else if heartRate > 100 {
+		// Takikardia
+		alertType = "Detak Jantung Cepat"
+		label = "Takikardia"
+		explanation = "Detak jantung Anda berada di atas batas normal. Kondisi ini dapat menyebabkan palpitasi, pusing, atau sesak napas."
+		immediateActions = []string{
+			"Duduk atau berbaring dengan tenang",
+			"Lakukan relaksasi pernapasan dalam",
+			"Hindari kafein dan stimulan lainnya",
+		}
+		medicalAttention = []string{
+			"Jika disertai nyeri dada atau sesak napas berat",
+			"Jika detak jantung tidak kembali normal setelah istirahat",
+			"Jika terjadi secara tiba-tiba dan berulang",
+			"Segera ke unit gawat darurat jika disertai gejala serius",
+		}
+		managementTips = []string{
+			"Kurangi konsumsi kafein dan alkohol",
+			"Kelola stres dengan baik",
+			"Olahraga teratur dengan intensitas sedang",
+			"Tidur cukup minimal 7-8 jam per hari",
+			"Monitor detak jantung secara rutin",
+		}
+	} else {
+		return nil
+	}
+
+	// Ambil video edukasi
+	videos := s.getEducationVideosByCategory(CategoryJantung)
+
+	return &response.HealthAlertResponse{
+		AlertType:        alertType,
+		Category:         CategoryJantung,
+		Value:            value,
+		Label:            label,
+		Status:           status,
+		RecordedAt:       recordedAt,
+		Explanation:      explanation,
+		ImmediateActions: immediateActions,
+		MedicalAttention: medicalAttention,
+		ManagementTips:   managementTips,
+		EducationVideos:  videos,
+	}
+}
+
+// getBloodPressureStatus menentukan status tekanan darah
+func (s *HealthAlertService) getBloodPressureStatus(systolic, diastolic int) string {
+	if systolic >= 180 || diastolic >= 120 {
+		return StatusCritical
+	}
+	if systolic >= 140 || diastolic >= 90 {
+		return StatusHigh
+	}
+	if systolic < 90 || diastolic < 60 {
+		return StatusLow
+	}
+	return StatusNormal
+}
+
+// getBloodSugarStatus menentukan status gula darah
+func (s *HealthAlertService) getBloodSugarStatus(bloodSugar int) string {
+	if bloodSugar < 70 {
+		return StatusCritical
+	}
+	if bloodSugar > 200 {
+		return StatusCritical
+	}
+	if bloodSugar > 100 {
+		return StatusHigh
+	}
+	return StatusNormal
+}
+
+// getHeartRateStatus menentukan status detak jantung
+func (s *HealthAlertService) getHeartRateStatus(heartRate int) string {
+	if heartRate < 60 {
+		return StatusLow
+	}
+	if heartRate > 100 {
+		return StatusHigh
+	}
+	return StatusNormal
+}
+
+// getEducationVideosByCategory mengambil video edukasi berdasarkan kategori
+func (s *HealthAlertService) getEducationVideosByCategory(category string) []response.EducationVideoItem {
+	videos, err := s.educationalVideoRepo.GetEducationalVideosByCategoryKategori(category)
 	if err != nil {
-		return err
+		// Jika error, return empty array (tidak mengganggu response utama)
+		return []response.EducationVideoItem{}
 	}
 
-	healthAlert := &entity.HealthAlert{
-		UserID:         userID,
-		AlertType:      alert.AlertType,
-		Message:        alert.Message,
-		Status:         entity.AlertStatus(alert.Status),
-		Recommendations: string(recommendationsJSON),
-		RecordedAt:     recordedAt,
+	result := make([]response.EducationVideoItem, 0, len(videos))
+	for _, video := range videos {
+		result = append(result, response.EducationVideoItem{
+			ID:    video.ID,
+			Title: video.VideoTitle,
+			URL:   video.VideoURL,
+		})
 	}
 
-	return s.healthAlertRepo.CreateHealthAlert(healthAlert)
+	return result
 }
+
 

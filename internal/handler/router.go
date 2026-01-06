@@ -21,7 +21,7 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 	personalInfoRepo := repository.NewPersonalInfoRepository(userRepo.GetDB())
 
 	healthDataService := service.NewHealthDataService(healthDataRepo)
-	healthAlertService := service.NewHealthAlertService(healthAlertRepo, healthDataRepo)
+	healthAlertService := service.NewHealthAlertService(healthAlertRepo, healthDataRepo, educationalVideoRepo, categoryRepo)
 	educationalVideoService := service.NewEducationalVideoService(educationalVideoRepo, categoryRepo)
 	profileService := service.NewProfileService(userRepo, healthDataRepo, healthTargetRepo, personalInfoRepo)
 
@@ -52,7 +52,7 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 			health.GET("/data", healthDataHandler.GetHealthDataByUserID)
 			health.GET("/history", healthDataHandler.GetHealthHistory)
 			health.GET("/history/download", healthDataHandler.DownloadHealthReport)
-			health.POST("/check-health-alerts", healthAlertHandler.CheckHealthAlerts)
+			health.GET("/check-health-alerts", healthAlertHandler.CheckHealthAlerts)
 		}
 
 		education := api.Group("/education")
