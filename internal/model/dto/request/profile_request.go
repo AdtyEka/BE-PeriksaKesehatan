@@ -40,7 +40,7 @@ type UpdateSettingsRequest struct {
 	Language            *string `json:"language" binding:"omitempty,oneof=id en"`
 }
 
-// CreatePersonalInfoRequest untuk POST /api/profile/personal-info (multipart/form-data)
+// CreatePersonalInfoRequest untuk POST /api/profile (multipart/form-data)
 // Note: File upload tidak bisa di-validate dengan binding tag, harus divalidasi manual di handler
 type CreatePersonalInfoRequest struct {
 	Name      string  `form:"name" binding:"required,min=1,max=100"`

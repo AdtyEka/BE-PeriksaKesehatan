@@ -65,11 +65,12 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 		profile := api.Group("/profile")
 		profile.Use(authMiddleware)
 		{
+			// Single source of truth untuk data profil user (personal info)
 			profile.GET("", profileHandler.GetProfile)
-			profile.PUT("", profileHandler.UpdateProfile)
-			profile.POST("/personal-info", profileHandler.CreatePersonalInfo)
-			profile.GET("/personal-info", profileHandler.GetPersonalInfo)
-			profile.PUT("/personal-info", profileHandler.UpdatePersonalInfo)
+			profile.POST("", profileHandler.CreatePersonalInfo)
+			profile.PUT("", profileHandler.UpdatePersonalInfo)
+
+			// Endpoint lain yang masih terkait profil
 			profile.GET("/health-targets", profileHandler.GetHealthTargets)
 			profile.PUT("/health-targets", profileHandler.UpdateHealthTargets)
 			profile.GET("/settings", profileHandler.GetSettings)

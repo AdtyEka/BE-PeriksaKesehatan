@@ -30,7 +30,8 @@ func (h *ProfileHandler) GetProfile(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.profileService.GetProfile(userID)
+	// Ambil personal info sebagai sumber utama data profil
+	personalInfo, err := h.profileService.GetPersonalInfo(userID)
 	if err != nil {
 		if err.Error() == "user tidak ditemukan" {
 			utils.NotFound(c, "User tidak ditemukan")
@@ -38,6 +39,38 @@ func (h *ProfileHandler) GetProfile(c *gin.Context) {
 		}
 		utils.InternalServerError(c, "Gagal mengambil profil", err.Error())
 		return
+	}
+
+	// Ambil ringkasan profil (weight, height, age) dari health data & tanggal lahir
+	profileSummary, err := h.profileService.GetProfile(userID)
+	if err != nil {
+		if err.Error() == "user tidak ditemukan" {
+			utils.NotFound(c, "User tidak ditemukan")
+			return
+		}
+		utils.InternalServerError(c, "Gagal mengambil profil", err.Error())
+		return
+	}
+
+	// Satukan informasi personal info + ringkasan profil sesuai kontrak response
+	resp := struct {
+		Name      string   `json:"name"`
+		BirthDate *string  `json:"birth_date"`
+		Phone     *string  `json:"phone"`
+		Address   *string  `json:"address"`
+		PhotoURL  *string  `json:"photo_url"`
+		Weight    *float64 `json:"weight"`
+		Height    *int     `json:"height"`
+		Age       *int     `json:"age"`
+	}{
+		Name:      personalInfo.Name,
+		BirthDate: personalInfo.BirthDate,
+		Phone:     personalInfo.Phone,
+		Address:   personalInfo.Address,
+		PhotoURL:  personalInfo.PhotoURL,
+		Weight:    profileSummary.Weight,
+		Height:    profileSummary.Height,
+		Age:       profileSummary.Age,
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Profil berhasil diambil", resp)
@@ -72,26 +105,6 @@ func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Profil berhasil diupdate", nil)
-}
-
-func (h *ProfileHandler) GetPersonalInfo(c *gin.Context) {
-	userID, ok := middleware.GetUserIDFromContext(c)
-	if !ok {
-		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
-		return
-	}
-
-	resp, err := h.profileService.GetPersonalInfo(userID)
-	if err != nil {
-		if err.Error() == "user tidak ditemukan" {
-			utils.NotFound(c, "User tidak ditemukan")
-			return
-		}
-		utils.InternalServerError(c, "Gagal mengambil informasi pribadi", err.Error())
-		return
-	}
-
-	utils.SuccessResponse(c, http.StatusOK, "Informasi pribadi berhasil diambil", resp)
 }
 
 func (h *ProfileHandler) CreatePersonalInfo(c *gin.Context) {
@@ -210,7 +223,8 @@ func (h *ProfileHandler) CreatePersonalInfo(c *gin.Context) {
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusCreated, "Informasi pribadi berhasil dibuat", resp)
+	// Response konsisten dengan GET/PUT: kembalikan snapshot personal info terbaru
+	utils.SuccessResponse(c, http.StatusOK, "Profil berhasil dibuat", resp)
 }
 
 func (h *ProfileHandler) UpdatePersonalInfo(c *gin.Context) {
@@ -322,12 +336,20 @@ func (h *ProfileHandler) UpdatePersonalInfo(c *gin.Context) {
 			return
 		}
 
+		// Ambil snapshot personal info terbaru untuk response
+		updatedResp, err := h.profileService.GetPersonalInfo(userID)
+		if err != nil {
+			utils.InternalServerError(c, "Gagal mengambil informasi pribadi terbaru", err.Error())
+			return
+		}
+
 		// Hapus foto lama jika ada foto baru yang diupload
 		if photoURL != nil && oldPhotoURL != nil && *oldPhotoURL != "" {
 			_ = utils.DeleteProfileImage(*oldPhotoURL)
 		}
 
-		utils.SuccessResponse(c, http.StatusOK, "Informasi pribadi berhasil diupdate", nil)
+		// Response konsisten: kembalikan snapshot personal info terbaru
+		utils.SuccessResponse(c, http.StatusOK, "Profil berhasil diupdate", updatedResp)
 	} else {
 		// Handle JSON (tanpa file upload)
 		var req request.UpdatePersonalInfoRequest
@@ -364,7 +386,15 @@ func (h *ProfileHandler) UpdatePersonalInfo(c *gin.Context) {
 			return
 		}
 
-		utils.SuccessResponse(c, http.StatusOK, "Informasi pribadi berhasil diupdate", nil)
+		// Ambil snapshot personal info terbaru untuk response
+		updatedResp, err := h.profileService.GetPersonalInfo(userID)
+		if err != nil {
+			utils.InternalServerError(c, "Gagal mengambil informasi pribadi terbaru", err.Error())
+			return
+		}
+
+		// Response konsisten: kembalikan snapshot personal info terbaru
+		utils.SuccessResponse(c, http.StatusOK, "Profil berhasil diupdate", updatedResp)
 	}
 }
 
