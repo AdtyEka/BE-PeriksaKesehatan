@@ -1,8 +1,8 @@
 package service
 
 import (
-	"strings"
 	"math"
+	"strings"
 )
 
 // Konstanta status kesehatan sesuai standar WHO
@@ -10,6 +10,9 @@ const (
 	StatusRendah = "RENDAH"
 	StatusNormal = "NORMAL"
 	StatusTinggi = "TINGGI"
+
+	bmiLowerThresholdValue = 18.5
+	bmiUpperThresholdValue = 25.0
 )
 
 // getBloodPressureStatus menentukan status tekanan darah berdasarkan kombinasi sistolik dan diastolik (WHO)
@@ -58,13 +61,7 @@ func calculateBMI(weightKg float64, heightCm int) float64 {
 // NORMAL jika BMI 18.5–24.9
 // TINGGI jika BMI ≥ 25
 func (s *HealthDataService) getBMIStatus(bmi float64) string {
-	if bmi < 18.5 {
-		return StatusRendah
-	}
-	if bmi >= 25 {
-		return StatusTinggi
-	}
-	return StatusNormal
+	return getBMIStatusValue(bmi)
 }
 
 // getHeartRateStatus menentukan status detak jantung
@@ -94,3 +91,13 @@ func roundTo2Decimals(num float64) float64 {
 	return math.Round(num*100) / 100
 }
 
+// getBMIStatusValue digunakan lintas service untuk memastikan konsistensi klasifikasi BMI
+func getBMIStatusValue(bmi float64) string {
+	if bmi < bmiLowerThresholdValue {
+		return StatusRendah
+	}
+	if bmi >= bmiUpperThresholdValue {
+		return StatusTinggi
+	}
+	return StatusNormal
+}

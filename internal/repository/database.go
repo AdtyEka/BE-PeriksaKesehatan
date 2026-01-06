@@ -437,6 +437,7 @@ func seedDefaultCategories(db *gorm.DB) error {
 		{Kategori: "Diabetes"},
 		{Kategori: "Hipertensi"},
 		{Kategori: "Jantung"},
+		{ID: 4, Kategori: "Berat Badan"},
 	}
 
 	for _, category := range defaultCategories {
@@ -491,4 +492,3 @@ func isAlreadyExistsError(err error) bool {
 	return strings.Contains(errMsg, "already exists") ||
 		strings.Contains(errMsg, "duplicate")
 }
-

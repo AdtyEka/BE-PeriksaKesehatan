@@ -84,4 +84,3 @@ func (r *EducationalVideoRepository) GetEducationalVideosByCategoryKategori(kate
 	}
 	return videos, nil
 }
-

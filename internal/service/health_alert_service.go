@@ -12,14 +12,14 @@ const (
 	CategoryDiabetes   = "diabetes"
 	CategoryHipertensi = "hipertensi"
 	CategoryJantung    = "jantung"
+	CategoryBeratBadan = "berat_badan"
 )
 
-
 type HealthAlertService struct {
-	healthAlertRepo        *repository.HealthAlertRepository
-	healthDataRepo         *repository.HealthDataRepository
-	educationalVideoRepo   *repository.EducationalVideoRepository
-	categoryRepo           *repository.CategoryRepository
+	healthAlertRepo      *repository.HealthAlertRepository
+	healthDataRepo       *repository.HealthDataRepository
+	educationalVideoRepo *repository.EducationalVideoRepository
+	categoryRepo         *repository.CategoryRepository
 }
 
 func NewHealthAlertService(
@@ -73,6 +73,14 @@ func (s *HealthAlertService) CheckHealthAlerts(userID uint) (*response.CheckHeal
 	// Evaluasi kategori jantung
 	if latestHealthData.HeartRate != nil {
 		alert := s.evaluateHeartRate(*latestHealthData.HeartRate, latestHealthData.CreatedAt)
+		if alert != nil {
+			alerts = append(alerts, *alert)
+		}
+	}
+
+	// Evaluasi kategori berat badan berbasis BMI
+	if latestHealthData.Weight != nil && latestHealthData.HeightCM != nil {
+		alert := s.evaluateBMI(*latestHealthData.Weight, *latestHealthData.HeightCM, latestHealthData.CreatedAt)
 		if alert != nil {
 			alerts = append(alerts, *alert)
 		}
@@ -312,6 +320,86 @@ func (s *HealthAlertService) evaluateHeartRate(heartRate int, recordedAt time.Ti
 	}
 }
 
+// evaluateBMI mengevaluasi status BMI dan mengembalikan alert jika tidak normal
+func (s *HealthAlertService) evaluateBMI(weightKg float64, heightCM int, recordedAt time.Time) *response.HealthAlertResponse {
+	if weightKg <= 0 || heightCM <= 0 {
+		return nil
+	}
+
+	bmiValue := calculateBMI(weightKg, heightCM)
+	if bmiValue <= 0 {
+		return nil
+	}
+
+	bmiRounded := roundTo2Decimals(bmiValue)
+	status := getBMIStatusValue(bmiRounded)
+	if status == StatusNormal {
+		return nil
+	}
+
+	value := fmt.Sprintf("BMI %.2f", bmiRounded)
+
+	var alertType, label, explanation string
+	var immediateActions, medicalAttention, managementTips []string
+
+	if status == StatusRendah {
+		alertType = "Berat Badan Tidak Normal"
+		label = "Kurus"
+		explanation = "Indeks Massa Tubuh Anda berada di bawah batas normal. Kondisi ini dapat menandakan kurangnya asupan nutrisi dan energi."
+		immediateActions = []string{
+			"Tingkatkan asupan kalori dengan makanan bergizi seimbang.",
+			"Konsumsi camilan sehat di antara waktu makan.",
+			"Perbanyak konsumsi protein dan karbohidrat kompleks.",
+		}
+		medicalAttention = []string{
+			"Jika penurunan berat badan terjadi cepat tanpa sebab jelas.",
+			"Jika disertai lemas, pusing, atau gejala lain.",
+			"Konsultasikan dengan tenaga kesehatan untuk evaluasi menyeluruh.",
+		}
+		managementTips = []string{
+			"Atur jadwal makan teratur dengan porsi cukup.",
+			"Tambah porsi protein seperti telur, ikan, atau kacang-kacangan.",
+			"Lakukan aktivitas fisik ringan untuk menjaga nafsu makan.",
+		}
+	} else {
+		alertType = "Berat Badan Tidak Normal"
+		label = "Obesitas"
+		explanation = "Indeks Massa Tubuh Anda berada di atas batas normal dan dapat meningkatkan risiko gangguan kesehatan."
+		immediateActions = []string{
+			"Kurangi konsumsi makanan tinggi lemak dan gula.",
+			"Perbanyak aktivitas fisik ringan.",
+			"Pilih porsi makan lebih kecil namun sering.",
+		}
+		medicalAttention = []string{
+			"Jika berat badan meningkat cepat dalam waktu singkat.",
+			"Jika disertai sesak napas atau kelelahan berlebih.",
+			"Konsultasikan dengan tenaga kesehatan untuk rencana penurunan berat badan.",
+		}
+		managementTips = []string{
+			"Terapkan pola makan seimbang dengan sayur dan buah.",
+			"Lakukan olahraga rutin minimal 30 menit per hari.",
+			"Pantau berat badan secara berkala.",
+			"Hindari minuman manis dan pilih air putih.",
+		}
+	}
+
+	videos := s.getEducationVideosByCategory(CategoryBeratBadan)
+
+	return &response.HealthAlertResponse{
+		AlertType:        alertType,
+		Category:         CategoryBeratBadan,
+		Value:            value,
+		Label:            label,
+		Status:           status,
+		RecordedAt:       recordedAt,
+		Explanation:      explanation,
+		ImmediateActions: immediateActions,
+		MedicalAttention: medicalAttention,
+		ManagementTips:   managementTips,
+		EducationVideos:  videos,
+	}
+}
+
 // getBloodPressureStatus menentukan status tekanan darah berdasarkan kombinasi sistolik dan diastolik (WHO)
 // RENDAH jika sistolik < 90 atau diastolik < 60
 // NORMAL jika sistolik 90–139 dan diastolik 60–89
@@ -375,5 +463,3 @@ func (s *HealthAlertService) getEducationVideosByCategory(category string) []res
 
 	return result
 }
-
-
