@@ -12,17 +12,13 @@ import (
 
 // HealthDataService menangani business logic untuk data kesehatan
 type HealthDataService struct {
-	healthDataRepo         *repository.HealthDataRepository
-	educationalVideoRepo   *repository.EducationalVideoRepository
-	categoryRepo           *repository.CategoryRepository
+	healthDataRepo *repository.HealthDataRepository
 }
 
 // NewHealthDataService membuat instance baru dari HealthDataService
-func NewHealthDataService(healthDataRepo *repository.HealthDataRepository, educationalVideoRepo *repository.EducationalVideoRepository, categoryRepo *repository.CategoryRepository) *HealthDataService {
+func NewHealthDataService(healthDataRepo *repository.HealthDataRepository) *HealthDataService {
 	return &HealthDataService{
-		healthDataRepo:       healthDataRepo,
-		educationalVideoRepo:  educationalVideoRepo,
-		categoryRepo:         categoryRepo,
+		healthDataRepo: healthDataRepo,
 	}
 }
 
