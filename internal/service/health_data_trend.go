@@ -161,12 +161,18 @@ func (s *HealthDataService) buildActivityTrend(data []entity.HealthData) []respo
 		dateMap[dateStr] = append(dateMap[dateStr], d)
 	}
 
-	// Hitung total per hari
+	// Hitung total per hari - default 0 jika tidak ada aktivitas valid
 	var points []response.ActivityTrendPoint
 	for dateStr, dayData := range dateMap {
-		// Estimasi langkah dan kalori
-		steps := len(dayData) * 1000
-		calories := float64(len(dayData)) * 200.0
+		steps := 0
+		calories := 0.0
+		// Hanya hitung jika ada activity field yang tidak kosong
+		for _, d := range dayData {
+			if d.Activity != nil && *d.Activity != "" {
+				steps += 1000
+				calories += 200.0
+			}
+		}
 		points = append(points, response.ActivityTrendPoint{
 			Date:     dateStr,
 			Steps:    steps,

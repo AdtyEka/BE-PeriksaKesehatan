@@ -14,13 +14,6 @@ const (
 	CategoryJantung    = "jantung"
 )
 
-// Status konstan
-const (
-	StatusNormal   = "Normal"
-	StatusHigh     = "High"
-	StatusLow      = "Low"
-	StatusCritical = "Critical"
-)
 
 type HealthAlertService struct {
 	healthAlertRepo        *repository.HealthAlertRepository
@@ -58,7 +51,8 @@ func (s *HealthAlertService) CheckHealthAlerts(userID uint) (*response.CheckHeal
 		}, nil
 	}
 
-	var alerts []response.HealthAlertResponse
+	// Inisialisasi slice agar tidak bernilai nil saat tidak ada alert
+	alerts := make([]response.HealthAlertResponse, 0)
 
 	// Evaluasi kategori hipertensi
 	if latestHealthData.Systolic != nil && latestHealthData.Diastolic != nil {
@@ -100,26 +94,7 @@ func (s *HealthAlertService) evaluateBloodPressure(systolic, diastolic int, reco
 	var alertType, label, explanation string
 	var immediateActions, medicalAttention, managementTips []string
 
-	if systolic >= 180 || diastolic >= 120 {
-		// Hipertensi krisis
-		alertType = "Tekanan Darah Sangat Tinggi"
-		label = "Hipertensi Krisis"
-		explanation = "Tekanan darah Anda berada pada tingkat krisis dan memerlukan perhatian medis segera. Kondisi ini dapat menyebabkan kerusakan organ."
-		immediateActions = []string{
-			"Segera hubungi layanan darurat medis",
-			"Duduk atau berbaring dengan tenang",
-			"Hindari aktivitas fisik yang berat",
-		}
-		medicalAttention = []string{
-			"Segera ke unit gawat darurat",
-			"Jika disertai nyeri dada, sesak napas, atau gangguan penglihatan",
-		}
-		managementTips = []string{
-			"Konsultasi rutin dengan dokter untuk pengobatan",
-			"Pantau tekanan darah setiap hari",
-			"Hindari garam dan makanan tinggi natrium",
-		}
-	} else if systolic >= 140 || diastolic >= 90 {
+	if systolic >= 140 || diastolic >= 90 {
 		// Hipertensi
 		alertType = "Tekanan Darah Tinggi"
 		label = "Hipertensi"
@@ -195,10 +170,10 @@ func (s *HealthAlertService) evaluateBloodSugar(bloodSugar int, recordedAt time.
 	var immediateActions, medicalAttention, managementTips []string
 
 	if bloodSugar < 70 {
-		// Hipoglikemia
+		// Hipoglikemia (RENDAH)
 		alertType = "Gula Darah Rendah"
-		label = "Hipoglikemia"
-		explanation = "Gula darah Anda berada di bawah batas normal. Kondisi ini memerlukan perhatian segera karena dapat menyebabkan pingsan, kejang, atau koma."
+		label = "Gula Darah Rendah"
+		explanation = "Gula darah Anda berada di bawah batas normal (WHO: < 70 mg/dL). Kondisi ini memerlukan perhatian segera karena dapat menyebabkan pingsan, kejang, atau koma."
 		immediateActions = []string{
 			"Segera konsumsi 15-20 gram gula sederhana (permen, jus buah, atau tablet glukosa)",
 			"Tunggu 15 menit dan periksa kembali gula darah",
@@ -215,32 +190,11 @@ func (s *HealthAlertService) evaluateBloodSugar(bloodSugar int, recordedAt time.
 			"Monitor gula darah secara rutin",
 			"Konsultasi dengan dokter untuk penyesuaian obat",
 		}
-	} else if bloodSugar > 200 {
-		// Hiperglikemia berat
-		alertType = "Gula Darah Sangat Tinggi"
-		label = "Hiperglikemia Berat"
-		explanation = "Gula darah Anda sangat tinggi dan dapat menyebabkan komplikasi serius seperti ketoasidosis diabetik atau sindrom hiperosmolar hiperglikemik."
-		immediateActions = []string{
-			"Minum air putih yang cukup untuk mencegah dehidrasi",
-			"Hindari makanan dan minuman manis",
-			"Monitor gejala seperti mual, muntah, atau sesak napas",
-		}
-		medicalAttention = []string{
-			"Segera ke unit gawat darurat jika disertai mual, muntah, atau sesak napas",
-			"Konsultasi dengan dokter dalam 24 jam",
-			"Jika ada keton dalam urine (untuk penderita diabetes)",
-		}
-		managementTips = []string{
-			"Kurangi konsumsi karbohidrat dan gula",
-			"Tingkatkan aktivitas fisik secara bertahap",
-			"Konsultasi dengan dokter untuk penyesuaian pengobatan",
-			"Pantau gula darah secara rutin",
-		}
-	} else if bloodSugar > 100 {
-		// Hiperglikemia ringan-sedang
+	} else if bloodSugar > 140 {
+		// Hiperglikemia (TINGGI) - sesuai standar WHO untuk gula darah sewaktu
 		alertType = "Gula Darah Tinggi"
-		label = "Hiperglikemia"
-		explanation = "Gula darah Anda berada di atas batas normal. Jika berlangsung lama, dapat meningkatkan risiko komplikasi diabetes seperti kerusakan saraf, ginjal, dan mata."
+		label = "Gula Darah Tinggi"
+		explanation = "Gula darah Anda berada di atas batas normal (WHO: > 140 mg/dL untuk gula darah sewaktu). Jika berlangsung lama, dapat meningkatkan risiko komplikasi kesehatan."
 		immediateActions = []string{
 			"Hindari makanan dan minuman manis",
 			"Lakukan aktivitas fisik ringan jika memungkinkan",
@@ -358,43 +312,48 @@ func (s *HealthAlertService) evaluateHeartRate(heartRate int, recordedAt time.Ti
 	}
 }
 
-// getBloodPressureStatus menentukan status tekanan darah
+// getBloodPressureStatus menentukan status tekanan darah berdasarkan kombinasi sistolik dan diastolik (WHO)
+// RENDAH jika sistolik < 90 atau diastolik < 60
+// NORMAL jika sistolik 90–139 dan diastolik 60–89
+// TINGGI jika sistolik ≥ 140 atau diastolik ≥ 90
 func (s *HealthAlertService) getBloodPressureStatus(systolic, diastolic int) string {
-	if systolic >= 180 || diastolic >= 120 {
-		return StatusCritical
+	if systolic < 90 || diastolic < 60 {
+		return StatusRendah
 	}
 	if systolic >= 140 || diastolic >= 90 {
-		return StatusHigh
+		return StatusTinggi
 	}
-	if systolic < 90 || diastolic < 60 {
-		return StatusLow
+	if systolic >= 90 && systolic <= 139 && diastolic >= 60 && diastolic <= 89 {
+		return StatusNormal
 	}
+	// Fallback untuk kasus edge case
 	return StatusNormal
 }
 
-// getBloodSugarStatus menentukan status gula darah
+// getBloodSugarStatus menentukan status gula darah sewaktu (WHO)
+// RENDAH jika < 70 mg/dL
+// NORMAL jika 70–140 mg/dL
+// TINGGI jika > 140 mg/dL
 func (s *HealthAlertService) getBloodSugarStatus(bloodSugar int) string {
 	if bloodSugar < 70 {
-		return StatusCritical
+		return StatusRendah
 	}
-	if bloodSugar > 200 {
-		return StatusCritical
-	}
-	if bloodSugar > 100 {
-		return StatusHigh
+	if bloodSugar > 140 {
+		return StatusTinggi
 	}
 	return StatusNormal
 }
 
 // getHeartRateStatus menentukan status detak jantung
+// Menggunakan logika yang sama untuk konsistensi
 func (s *HealthAlertService) getHeartRateStatus(heartRate int) string {
+	if heartRate >= 60 && heartRate <= 100 {
+		return StatusNormal
+	}
 	if heartRate < 60 {
-		return StatusLow
+		return StatusRendah
 	}
-	if heartRate > 100 {
-		return StatusHigh
-	}
-	return StatusNormal
+	return StatusTinggi
 }
 
 // getEducationVideosByCategory mengambil video edukasi berdasarkan kategori

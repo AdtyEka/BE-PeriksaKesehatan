@@ -88,13 +88,18 @@ func (s *HealthDataService) calculateBloodPressureSummary(data, prevData []entit
 		changePercent = ((avgSystolic - prevAvgSystolic) / prevAvgSystolic) * 100
 	}
 
+	// Hitung status berdasarkan rata-rata (menggunakan kombinasi sistolik dan diastolik)
+	avgSystolicInt := int(avgSystolic)
+	avgDiastolicInt := int(avgDiastolic)
+	status := s.getBloodPressureStatus(avgSystolicInt, avgDiastolicInt)
+
 	return &response.BloodPressureSummary{
 		AvgSystolic:     roundTo2Decimals(avgSystolic),
 		AvgDiastolic:    roundTo2Decimals(avgDiastolic),
 		ChangePercent:   roundTo2Decimals(changePercent),
-		SystolicStatus:  s.getBloodPressureStatus(avgSystolic, true),
-		DiastolicStatus: s.getBloodPressureStatus(avgDiastolic, false),
-		NormalRange:     "90-120 / 60-80 mmHg",
+		SystolicStatus:  status, // Status berdasarkan kombinasi sistolik dan diastolik
+		DiastolicStatus: status, // Status sama karena menggunakan kombinasi
+		NormalRange:     "90-139 / 60-89 mmHg (WHO)",
 	}
 }
 
@@ -146,11 +151,12 @@ func (s *HealthDataService) calculateBloodSugarSummary(data, prevData []entity.H
 		changePercent = ((avgValue - prevAvg) / prevAvg) * 100
 	}
 
+	avgValueInt := int(avgValue)
 	return &response.BloodSugarSummary{
 		AvgValue:     roundTo2Decimals(avgValue),
 		ChangePercent: roundTo2Decimals(changePercent),
-		Status:       s.getBloodSugarStatus(avgValue),
-		NormalRange:  "70-100 mg/dL",
+		Status:       s.getBloodSugarStatus(avgValueInt),
+		NormalRange:  "70-140 mg/dL (WHO - Gula Darah Sewaktu)",
 	}
 }
 
@@ -210,10 +216,41 @@ func (s *HealthDataService) calculateWeightSummary(data, prevData []entity.Healt
 		trend = "Turun"
 	}
 
-	// BMI tidak dihitung karena tidak ada tinggi badan di entity
+	// Hitung BMI jika ada tinggi badan
+	var bmi *float64
+	var bmiValue float64
+	hasHeight := false
+	for _, d := range validData {
+		if d.HeightCM != nil {
+			hasHeight = true
+			heightCM := *d.HeightCM
+			bmiValue = calculateBMI(avgWeight, heightCM)
+			bmi = &bmiValue
+			break // Ambil tinggi badan pertama yang ditemukan
+		}
+	}
+
+	// Jika ada beberapa data dengan tinggi badan berbeda, hitung rata-rata BMI
+	if hasHeight {
+		var totalBMI float64
+		var bmiCount int
+		for _, d := range validData {
+			if d.Weight != nil && d.HeightCM != nil {
+				bmiVal := calculateBMI(*d.Weight, *d.HeightCM)
+				totalBMI += bmiVal
+				bmiCount++
+			}
+		}
+		if bmiCount > 0 {
+			avgBMI := totalBMI / float64(bmiCount)
+			bmiValue = roundTo2Decimals(avgBMI)
+			bmi = &bmiValue
+		}
+	}
+
 	return &response.WeightSummary{
 		AvgWeight:     roundTo2Decimals(avgWeight),
-		BMI:           nil,
+		BMI:           bmi,
 		Trend:         trend,
 		ChangePercent: roundTo2Decimals(changePercent),
 	}
@@ -225,14 +262,30 @@ func (s *HealthDataService) calculateActivitySummary(data, prevData []entity.Hea
 		return nil
 	}
 
-	// Untuk aktivitas, kita hitung total langkah dan kalori dari activity field
-	// Karena struktur activity adalah string, kita asumsikan format tertentu atau hitung berdasarkan data yang ada
-	// Untuk sementara, kita hitung jumlah record sebagai proxy untuk aktivitas
-	totalSteps := len(data) * 1000 // Estimasi, karena tidak ada field steps terpisah
-	totalCalories := float64(len(data)) * 200.0 // Estimasi
+	// Untuk aktivitas, default adalah 0 jika tidak ada input aktivitas yang valid
+	// Hanya menghitung jika ada activity field yang tidak kosong
+	totalSteps := 0
+	totalCalories := 0.0
+	activityCount := 0
+	for _, d := range data {
+		if d.Activity != nil && *d.Activity != "" {
+			activityCount++
+			// Estimasi: setiap aktivitas = 1000 langkah dan 200 kalori
+			// Ini bisa disesuaikan jika ada format spesifik di activity field
+			totalSteps += 1000
+			totalCalories += 200.0
+		}
+	}
 
 	// Hitung periode sebelumnya
-	prevTotalSteps := len(prevData) * 1000
+	prevTotalSteps := 0
+	prevActivityCount := 0
+	for _, d := range prevData {
+		if d.Activity != nil && *d.Activity != "" {
+			prevActivityCount++
+			prevTotalSteps += 1000
+		}
+	}
 
 	// Hitung persentase perubahan
 	changePercent := 0.0

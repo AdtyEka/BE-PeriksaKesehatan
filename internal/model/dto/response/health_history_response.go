@@ -22,17 +22,17 @@ type BloodPressureSummary struct {
 	AvgSystolic      float64 `json:"avg_systolic"`       // Rata-rata systolic
 	AvgDiastolic     float64 `json:"avg_diastolic"`     // Rata-rata diastolic
 	ChangePercent    float64 `json:"change_percent"`     // Persentase perubahan dari periode sebelumnya
-	SystolicStatus   string  `json:"systolic_status"`    // Status: Normal / Perhatian / Abnormal
-	DiastolicStatus  string  `json:"diastolic_status"`  // Status: Normal / Perhatian / Abnormal
-	NormalRange      string  `json:"normal_range"`      // Rentang normal: "90-120 / 60-80 mmHg"
+	SystolicStatus   string  `json:"systolic_status"`    // Status: RENDAH / NORMAL / TINGGI (WHO)
+	DiastolicStatus  string  `json:"diastolic_status"`  // Status: RENDAH / NORMAL / TINGGI (WHO)
+	NormalRange      string  `json:"normal_range"`      // Rentang normal: "90-139 / 60-89 mmHg (WHO)"
 }
 
 // BloodSugarSummary ringkasan statistik gula darah
 type BloodSugarSummary struct {
 	AvgValue      float64 `json:"avg_value"`       // Rata-rata gula darah
 	ChangePercent float64 `json:"change_percent"`  // Persentase perubahan
-	Status        string  `json:"status"`          // Status: Normal / Perhatian / Abnormal
-	NormalRange   string  `json:"normal_range"`    // Rentang normal: "70-100 mg/dL"
+	Status        string  `json:"status"`          // Status: RENDAH / NORMAL / TINGGI (WHO)
+	NormalRange   string  `json:"normal_range"`    // Rentang normal: "70-140 mg/dL (WHO - Gula Darah Sewaktu)"
 }
 
 // WeightSummary ringkasan statistik berat badan
@@ -91,7 +91,7 @@ type ReadingHistoryResponse struct {
 	MetricType  string    `json:"metric_type"`  // Jenis metrik: "tekanan_darah", "gula_darah", "berat_badan", "aktivitas"
 	Value       string    `json:"value"`        // Nilai pengukuran (format string untuk fleksibilitas)
 	Context     *string   `json:"context"`      // Konteks (puasa, setelah makan, dll)
-	Status      string    `json:"status"`       // Status: Normal / Perhatian / Abnormal
+	Status      string    `json:"status"`       // Status: RENDAH / NORMAL / TINGGI (WHO)
 	Notes       *string   `json:"notes"`        // Catatan tambahan
 }
 

@@ -29,7 +29,7 @@ func (s *HealthDataService) buildReadingHistory(data []entity.HealthData) []resp
 				MetricType: "tekanan_darah",
 				Value:      fmt.Sprintf("%d/%d mmHg", systolic, diastolic),
 				Context:    nil,
-				Status:     s.getBloodPressureStatus(float64(systolic), true),
+				Status:     s.getBloodPressureStatus(systolic, diastolic),
 				Notes:      nil,
 			})
 		}
@@ -43,13 +43,28 @@ func (s *HealthDataService) buildReadingHistory(data []entity.HealthData) []resp
 				MetricType: "gula_darah",
 				Value:      fmt.Sprintf("%d mg/dL", bloodSugar),
 				Context:    nil,
-				Status:     s.getBloodSugarStatus(float64(bloodSugar)),
+				Status:     s.getBloodSugarStatus(bloodSugar),
 				Notes:      nil,
 			})
 		}
 
-		// Berat badan (hanya jika ada)
-		if d.Weight != nil {
+		// Berat badan (hanya jika ada) - menggunakan BMI untuk menentukan status
+		if d.Weight != nil && d.HeightCM != nil {
+			weight := *d.Weight
+			heightCM := *d.HeightCM
+			bmi := calculateBMI(weight, heightCM)
+			bmiStatus := s.getBMIStatus(bmi)
+			history = append(history, response.ReadingHistoryResponse{
+				ID:         d.ID,
+				DateTime:   d.CreatedAt,
+				MetricType: "berat_badan",
+				Value:      fmt.Sprintf("%.2f kg (BMI: %.2f)", weight, roundTo2Decimals(bmi)),
+				Context:    nil,
+				Status:     bmiStatus,
+				Notes:      nil,
+			})
+		} else if d.Weight != nil {
+			// Jika hanya berat badan tanpa tinggi badan, tidak bisa hitung BMI
 			weight := *d.Weight
 			history = append(history, response.ReadingHistoryResponse{
 				ID:         d.ID,
@@ -57,7 +72,7 @@ func (s *HealthDataService) buildReadingHistory(data []entity.HealthData) []resp
 				MetricType: "berat_badan",
 				Value:      fmt.Sprintf("%.2f kg", weight),
 				Context:    nil,
-				Status:     "Normal", // Berat badan tidak punya status abnormal
+				Status:     StatusNormal, // Default jika tidak ada tinggi badan
 				Notes:      nil,
 			})
 		}
@@ -71,7 +86,7 @@ func (s *HealthDataService) buildReadingHistory(data []entity.HealthData) []resp
 				MetricType: "detak_jantung",
 				Value:      fmt.Sprintf("%d bpm", heartRate),
 				Context:    nil,
-				Status:     s.getHeartRateStatus(float64(heartRate)),
+				Status:     s.getHeartRateStatus(heartRate),
 				Notes:      nil,
 			})
 		}
@@ -84,7 +99,7 @@ func (s *HealthDataService) buildReadingHistory(data []entity.HealthData) []resp
 				MetricType: "aktivitas",
 				Value:      *d.Activity,
 				Context:    nil,
-				Status:     "Normal",
+				Status:     StatusNormal,
 				Notes:      nil,
 			})
 		}
