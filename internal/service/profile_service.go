@@ -90,71 +90,6 @@ func (s *ProfileService) GetProfile(userID uint) (*response.ProfileResponse, err
 	return resp, nil
 }
 
-func (s *ProfileService) UpdateProfile(userID uint, req *request.UpdateProfileRequest) error {
-	_, err := s.userRepo.GetUserByID(userID)
-	if err != nil {
-		return err
-	}
-
-	// Update user profile (nama)
-	userUpdates := make(map[string]interface{})
-	if req.Name != nil {
-		userUpdates["nama"] = *req.Name
-	}
-	if len(userUpdates) > 0 {
-		err = s.userRepo.UpdateUserProfile(userID, userUpdates)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Update personal info (photo_url)
-	personalInfoUpdates := make(map[string]interface{})
-	if req.PhotoURL != nil {
-		personalInfoUpdates["photo_url"] = *req.PhotoURL
-	}
-	if len(personalInfoUpdates) > 0 {
-		err = s.personalInfoRepo.UpdatePersonalInfo(userID, personalInfoUpdates)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Update height di health_data
-	if req.Height != nil {
-		latestHealthData, err := s.healthDataRepo.GetLatestHealthDataByUserID(userID)
-		if err != nil {
-			return err
-		}
-
-		if latestHealthData != nil {
-			// Update health_data yang sudah ada
-			latestHealthData.HeightCM = req.Height
-			err = s.healthDataRepo.UpdateHealthData(latestHealthData)
-			if err != nil {
-				return err
-			}
-		} else {
-			// Buat health_data baru jika belum ada
-			healthData := &entity.HealthData{
-				UserID:   userID,
-				HeightCM: req.Height,
-			}
-			err = s.healthDataRepo.CreateHealthData(healthData)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	// Validasi bahwa ada data untuk diupdate
-	if len(userUpdates) == 0 && len(personalInfoUpdates) == 0 && req.Height == nil {
-		return errors.New("tidak ada data untuk diupdate")
-	}
-
-	return nil
-}
-
 // UpdateProfileWithMultipart mengupdate profil dengan support form-data dan file upload
 func (s *ProfileService) UpdateProfileWithMultipart(userID uint, req *request.UpdateProfileMultipartRequest, photoURL *string) error {
 	// Cek apakah user ada
@@ -454,43 +389,45 @@ func (s *ProfileService) CreatePersonalInfo(userID uint, req *request.CreatePers
 		return nil, errors.New("personal info sudah ada")
 	}
 
-	// Validasi birth_date format
-	birthDate, err := time.Parse("2006-01-02", req.BirthDate)
-	if err != nil {
-		return nil, errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
+	// Validasi dan parse birth_date jika dikirim
+	var birthDate *time.Time
+	if req.BirthDate != nil && *req.BirthDate != "" {
+		parsedDate, err := time.Parse("2006-01-02", *req.BirthDate)
+		if err != nil {
+			return nil, errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
+		}
+
+		// Validasi birth_date tidak boleh di masa depan
+		if parsedDate.After(time.Now()) {
+			return nil, errors.New("tanggal lahir tidak boleh di masa depan")
+		}
+
+		birthDate = &parsedDate
 	}
 
-	// Validasi birth_date tidak boleh di masa depan
-	if birthDate.After(time.Now()) {
-		return nil, errors.New("tanggal lahir tidak boleh di masa depan")
-	}
-
-	// Validasi phone wajib (sudah divalidasi di handler, tapi double check)
-	if req.Phone == nil || *req.Phone == "" {
-		return nil, errors.New("phone wajib diisi")
-	}
-
-	phone := *req.Phone
-	// Validasi numeric dan panjang 10-15 digit
-	if len(phone) < 10 || len(phone) > 15 {
-		return nil, errors.New("phone harus 10-15 digit")
-	}
-	// Validasi numeric
-	for _, char := range phone {
-		if char < '0' || char > '9' {
-			return nil, errors.New("phone harus numeric")
+	// Validasi phone jika dikirim: numeric dan panjang 10-15 digit
+	if req.Phone != nil && *req.Phone != "" {
+		phone := *req.Phone
+		if len(phone) < 10 || len(phone) > 15 {
+			return nil, errors.New("phone harus 10-15 digit")
+		}
+		// Validasi numeric
+		for _, char := range phone {
+			if char < '0' || char > '9' {
+				return nil, errors.New("phone harus numeric")
+			}
 		}
 	}
 
 	// Buat personal info
 	// Name diambil dari user.Nama (data dari register/auth), bukan dari request
 	personalInfo := &entity.PersonalInfo{
-		UserID:    userID,
-		Name:      user.Nama, // Ambil name dari user, bukan dari request
-		BirthDate: &birthDate,
-		Phone:     req.Phone,
-		Address:   req.Address,
-		PhotoURL:  photoURL,
+		UserID:   userID,
+		Name:     user.Nama, // Ambil name dari user, bukan dari request
+		BirthDate: birthDate,
+		Phone:    req.Phone,
+		Address:  req.Address,
+		PhotoURL: photoURL,
 	}
 
 	err = s.personalInfoRepo.CreatePersonalInfo(personalInfo)

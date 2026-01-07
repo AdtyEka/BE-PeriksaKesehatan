@@ -208,28 +208,27 @@ func (h *ProfileHandler) CreatePersonalInfo(c *gin.Context) {
 		return
 	}
 
-	// Validasi birth_date wajib
-	if req.BirthDate == "" {
-		utils.BadRequest(c, "Validasi gagal", "birth_date wajib diisi")
-		return
-	}
-
-	// Validasi phone wajib (required di binding, tapi double check)
-	if req.Phone == nil || *req.Phone == "" {
-		utils.BadRequest(c, "Validasi gagal", "phone wajib diisi")
-		return
-	}
-
-	// Validasi phone: panjang 10-15 digit dan numeric
-	phone := *req.Phone
-	if len(phone) < 10 || len(phone) > 15 {
-		utils.BadRequest(c, "Validasi gagal", "phone harus 10-15 digit")
-		return
-	}
-	for _, char := range phone {
-		if char < '0' || char > '9' {
-			utils.BadRequest(c, "Validasi gagal", "phone harus numeric")
+	// Validasi format birth_date jika dikirim
+	if req.BirthDate != nil && *req.BirthDate != "" {
+		_, err := time.Parse("2006-01-02", *req.BirthDate)
+		if err != nil {
+			utils.BadRequest(c, "Validasi gagal", "format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
 			return
+		}
+	}
+
+	// Validasi phone jika dikirim: panjang 10-15 digit dan numeric
+	if req.Phone != nil && *req.Phone != "" {
+		phone := *req.Phone
+		if len(phone) < 10 || len(phone) > 15 {
+			utils.BadRequest(c, "Validasi gagal", "phone harus 10-15 digit")
+			return
+		}
+		for _, char := range phone {
+			if char < '0' || char > '9' {
+				utils.BadRequest(c, "Validasi gagal", "phone harus numeric")
+				return
+			}
 		}
 	}
 

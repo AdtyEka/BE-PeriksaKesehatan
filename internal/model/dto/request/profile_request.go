@@ -1,13 +1,5 @@
 package request
 
-// UpdateProfileRequest untuk update profil dasar (foto, tinggi, nama tampilan)
-// Deprecated: Gunakan UpdateProfileMultipartRequest untuk form-data
-type UpdateProfileRequest struct {
-	Name     *string `json:"name" binding:"omitempty,min=1,max=100"`
-	PhotoURL *string `json:"photo_url" binding:"omitempty,url"`
-	Height   *int    `json:"height" binding:"omitempty,min=50,max=250"` // cm
-}
-
 // UpdateProfileMultipartRequest untuk update profil dengan form-data (multipart/form-data)
 // Semua field optional, hanya update field yang dikirim
 type UpdateProfileMultipartRequest struct {
@@ -55,9 +47,10 @@ type UpdateSettingsRequest struct {
 // CreatePersonalInfoRequest untuk POST /api/profile (multipart/form-data)
 // Note: File upload tidak bisa di-validate dengan binding tag, harus divalidasi manual di handler
 // Note: Name tidak lagi diterima di POST, akan diambil dari data user (register/auth)
+// Semua field optional, hanya field yang dikirim yang akan disimpan
 type CreatePersonalInfoRequest struct {
-	BirthDate string  `form:"birth_date" binding:"required"` // format: YYYY-MM-DD
-	Phone     *string `form:"phone" binding:"required"`       // akan divalidasi manual untuk numeric dan panjang 10-15 digit
+	BirthDate *string `form:"birth_date" binding:"omitempty"` // format: YYYY-MM-DD, optional
+	Phone     *string `form:"phone" binding:"omitempty"`       // akan divalidasi manual untuk numeric dan panjang 10-15 digit jika dikirim, optional
 	Address   *string `form:"address" binding:"omitempty"`   // optional
 	// Photo akan di-handle sebagai *multipart.FileHeader di handler
 }

@@ -146,36 +146,11 @@ func (r *UserRepository) UpdateUserProfile(id uint, updates map[string]interface
 	return nil
 }
 
-func (r *UserRepository) UpdateUserPersonalInfo(id uint, updates map[string]interface{}) error {
-	if len(updates) == 0 {
-		return errors.New("tidak ada data untuk diupdate")
-	}
-	result := r.db.Model(&entity.User{}).Where("id = ?", id).Updates(updates)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return errors.New("user tidak ditemukan")
-	}
-	return nil
-}
-
 func (r *UserRepository) UpdateUserSettings(id uint, updates map[string]interface{}) error {
 	if len(updates) == 0 {
 		return errors.New("tidak ada data untuk diupdate")
 	}
 	result := r.db.Model(&entity.User{}).Where("id = ?", id).Updates(updates)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return errors.New("user tidak ditemukan")
-	}
-	return nil
-}
-
-func (r *UserRepository) DeleteUser(id uint) error {
-	result := r.db.Delete(&entity.User{}, id)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -205,30 +180,5 @@ func (r *UserRepository) CheckUsernameExists(username string) (bool, error) {
 
 func (r *UserRepository) GetDB() *gorm.DB {
 	return r.db
-}
-
-// CheckProfileExists mengecek apakah user sudah memiliki profile
-// Profile dianggap ada jika user sudah memiliki data profil tambahan
-// seperti photo_url yang diisi
-func (r *UserRepository) CheckProfileExists(userID uint) (bool, error) {
-	if userID == 0 {
-		return false, errors.New("ID tidak valid")
-	}
-
-	var personalInfo entity.PersonalInfo
-	result := r.db.Where("user_id = ?", userID).First(&personalInfo)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return false, nil
-		}
-		return false, result.Error
-	}
-
-	// Profile dianggap ada jika personal info sudah memiliki photo_url
-	if personalInfo.PhotoURL != nil && *personalInfo.PhotoURL != "" {
-		return true, nil
-	}
-
-	return false, nil
 }
 
