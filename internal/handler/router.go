@@ -72,6 +72,7 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 
 			// Endpoint lain yang masih terkait profil
 			profile.GET("/health-targets", profileHandler.GetHealthTargets)
+			profile.POST("/health-targets", profileHandler.CreateHealthTargets)
 			profile.PUT("/health-targets", profileHandler.UpdateHealthTargets)
 			profile.GET("/settings", profileHandler.GetSettings)
 			profile.PUT("/settings", profileHandler.UpdateSettings)

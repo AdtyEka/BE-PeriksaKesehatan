@@ -1,6 +1,7 @@
 package request
 
 // UpdateProfileMultipartRequest untuk update profil dengan form-data (multipart/form-data)
+// Digunakan untuk PUT /api/profile dan juga untuk update personal info dengan file upload
 // Semua field optional, hanya update field yang dikirim
 type UpdateProfileMultipartRequest struct {
 	Name      *string `form:"name" binding:"omitempty,min=1,max=100"`
@@ -20,14 +21,14 @@ type UpdatePersonalInfoRequest struct {
 	Address   *string `json:"address" binding:"omitempty,min=5"`
 }
 
-// UpdatePersonalInfoMultipartRequest untuk update informasi pribadi dengan file upload (multipart/form-data)
-// Semua field optional, hanya update field yang dikirim
-type UpdatePersonalInfoMultipartRequest struct {
-	Name      *string `form:"name" binding:"omitempty,min=1,max=100"`
-	BirthDate *string `form:"birth_date" binding:"omitempty"` // format: YYYY-MM-DD, akan divalidasi di handler
-	Phone     *string `form:"phone" binding:"omitempty,min=6,max=30"`
-	Address   *string `form:"address" binding:"omitempty,min=5"`
-	// Photo akan di-handle sebagai *multipart.FileHeader di handler
+// CreateHealthTargetsRequest untuk POST /api/profile/health-targets
+// Semua field optional/nullable, tidak ada validation required
+// Jika field tidak dikirim, akan disimpan sebagai NULL di database
+type CreateHealthTargetsRequest struct {
+	TargetSystolic    *int     `json:"target_systolic" binding:"omitempty,min=90,max=180"`
+	TargetDiastolic   *int     `json:"target_diastolic" binding:"omitempty,min=60,max=120"`
+	TargetBloodSugar  *int     `json:"target_blood_sugar" binding:"omitempty,min=70,max=250"`
+	TargetWeight      *float64 `json:"target_weight" binding:"omitempty,min=30,max=300"`
 }
 
 // UpdateHealthTargetsRequest untuk update target kesehatan

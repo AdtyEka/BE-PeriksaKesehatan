@@ -300,7 +300,7 @@ func (s *ProfileService) UpdatePersonalInfo(userID uint, req *request.UpdatePers
 // UpdatePersonalInfoWithPhoto mengupdate personal info dengan support upload foto
 // photoURL adalah path file yang sudah diupload (jika ada)
 // Jika update gagal, rollback file sudah di-handle di handler
-func (s *ProfileService) UpdatePersonalInfoWithPhoto(userID uint, req *request.UpdatePersonalInfoMultipartRequest, photoURL *string) error {
+func (s *ProfileService) UpdatePersonalInfoWithPhoto(userID uint, req *request.UpdateProfileMultipartRequest, photoURL *string) error {
 	// Cek apakah user ada
 	_, err := s.userRepo.GetUserByID(userID)
 	if err != nil {
@@ -347,9 +347,12 @@ func (s *ProfileService) UpdatePersonalInfoWithPhoto(userID uint, req *request.U
 		updates["address"] = *req.Address
 	}
 
-	// Update photoURL jika ada file baru
+	// Update photoURL jika ada file baru yang diupload atau URL yang dikirim
 	if photoURL != nil {
 		updates["photo_url"] = *photoURL
+	} else if req.PhotoURL != nil && *req.PhotoURL != "" {
+		// Jika tidak ada file upload tapi ada photo_url di form
+		updates["photo_url"] = *req.PhotoURL
 	}
 
 	// Jika tidak ada field yang akan diupdate, return nil (no-op, tidak error)
@@ -536,6 +539,34 @@ func (s *ProfileService) GetHealthTargets(userID uint) (*response.HealthTargetsR
 	}
 
 	return resp, nil
+}
+
+func (s *ProfileService) CreateHealthTargets(userID uint, req *request.CreateHealthTargetsRequest) error {
+	// Cek apakah user ada
+	_, err := s.userRepo.GetUserByID(userID)
+	if err != nil {
+		return err
+	}
+
+	// Cek apakah health target sudah ada
+	existing, err := s.healthTargetRepo.GetHealthTargetByUserID(userID)
+	if err != nil && err.Error() != "health target tidak ditemukan" {
+		return err
+	}
+	if existing != nil {
+		return errors.New("health targets sudah ada, gunakan PUT untuk update")
+	}
+
+	// Buat health target baru (semua field bisa NULL)
+	healthTarget := &entity.HealthTarget{
+		UserID:          userID,
+		TargetSystolic:  req.TargetSystolic,
+		TargetDiastolic: req.TargetDiastolic,
+		TargetBloodSugar: req.TargetBloodSugar,
+		TargetWeight:    req.TargetWeight,
+	}
+
+	return s.healthTargetRepo.CreateHealthTarget(healthTarget)
 }
 
 func (s *ProfileService) UpdateHealthTargets(userID uint, req *request.UpdateHealthTargetsRequest) error {

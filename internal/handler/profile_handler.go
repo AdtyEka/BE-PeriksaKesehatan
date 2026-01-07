@@ -332,7 +332,7 @@ func (h *ProfileHandler) UpdatePersonalInfo(c *gin.Context) {
 
 	if isMultipart {
 		// Handle multipart/form-data (dengan support file upload)
-		var req request.UpdatePersonalInfoMultipartRequest
+		var req request.UpdateProfileMultipartRequest
 		if err = c.ShouldBind(&req); err != nil {
 			utils.BadRequest(c, "Data tidak valid", err.Error())
 			return
@@ -492,6 +492,36 @@ func (h *ProfileHandler) GetHealthTargets(c *gin.Context) {
 	}
 
 	utils.SuccessResponse(c, http.StatusOK, "Target kesehatan berhasil diambil", resp)
+}
+
+func (h *ProfileHandler) CreateHealthTargets(c *gin.Context) {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		utils.Unauthorized(c, "Token tidak valid atau tidak ditemukan")
+		return
+	}
+
+	var req request.CreateHealthTargetsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "Data tidak valid", err.Error())
+		return
+	}
+
+	err := h.profileService.CreateHealthTargets(userID, &req)
+	if err != nil {
+		if err.Error() == "user tidak ditemukan" {
+			utils.NotFound(c, "User tidak ditemukan")
+			return
+		}
+		if err.Error() == "health targets sudah ada, gunakan PUT untuk update" {
+			utils.ErrorResponse(c, http.StatusConflict, "Health targets sudah ada, gunakan PUT untuk update", nil)
+			return
+		}
+		utils.InternalServerError(c, "Gagal membuat target kesehatan", err.Error())
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusCreated, "Health targets created successfully", nil)
 }
 
 func (h *ProfileHandler) UpdateHealthTargets(c *gin.Context) {
