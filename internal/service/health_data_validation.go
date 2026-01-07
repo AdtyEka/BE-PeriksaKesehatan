@@ -20,15 +20,15 @@ func (s *HealthDataService) ValidateHealthData(req *request.HealthDataRequest) e
 		return errors.New("systolic dan diastolic harus dikirim bersamaan")
 	}
 
-	if err := utils.ValidateNullableInt(req.Systolic, "systolic", 90, 180); err != nil {
+	if err := utils.ValidateNullableInt(req.Systolic, "systolic", 0, 180); err != nil {
 		return err
 	}
 
-	if err := utils.ValidateNullableInt(req.Diastolic, "diastolic", 60, 120); err != nil {
+	if err := utils.ValidateNullableInt(req.Diastolic, "diastolic", 0, 120); err != nil {
 		return err
 	}
 
-	if err := utils.ValidateNullableInt(req.BloodSugar, "blood_sugar", 60, 300); err != nil {
+	if err := utils.ValidateNullableInt(req.BloodSugar, "blood_sugar", 0, 300); err != nil {
 		return err
 	}
 
@@ -40,7 +40,7 @@ func (s *HealthDataService) ValidateHealthData(req *request.HealthDataRequest) e
 		return err
 	}
 
-	if err := utils.ValidateNullableInt(req.HeartRate, "heart_rate", 40, 180); err != nil {
+	if err := utils.ValidateNullableInt(req.HeartRate, "heart_rate", 0, 180); err != nil {
 		return err
 	}
 
