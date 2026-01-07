@@ -18,6 +18,7 @@ func NewPersonalInfoRepository(db *gorm.DB) *PersonalInfoRepository {
 }
 
 // CreatePersonalInfo membuat personal info baru untuk user
+// Note: Name tidak lagi divalidasi di sini karena akan diambil dari data user (register/auth)
 func (r *PersonalInfoRepository) CreatePersonalInfo(personalInfo *entity.PersonalInfo) error {
 	if personalInfo == nil {
 		return errors.New("personal info tidak boleh nil")
@@ -25,9 +26,7 @@ func (r *PersonalInfoRepository) CreatePersonalInfo(personalInfo *entity.Persona
 	if personalInfo.UserID == 0 {
 		return errors.New("user_id harus diisi")
 	}
-	if personalInfo.Name == "" {
-		return errors.New("name harus diisi")
-	}
+	// Name tidak divalidasi di sini karena akan diambil dari user.Nama di service layer
 
 	result := r.db.Create(personalInfo)
 	if result.Error != nil {

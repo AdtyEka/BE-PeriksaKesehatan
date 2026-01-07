@@ -68,7 +68,7 @@ func SetupRouter(cfg *config.Config, userRepo *repository.UserRepository) *gin.E
 			// Single source of truth untuk data profil user (personal info)
 			profile.GET("", profileHandler.GetProfile)
 			profile.POST("", profileHandler.CreatePersonalInfo)
-			profile.PUT("", profileHandler.UpdatePersonalInfo)
+			profile.PUT("", profileHandler.UpdateProfile)
 
 			// Endpoint lain yang masih terkait profil
 			profile.GET("/health-targets", profileHandler.GetHealthTargets)

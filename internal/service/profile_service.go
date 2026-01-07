@@ -155,9 +155,120 @@ func (s *ProfileService) UpdateProfile(userID uint, req *request.UpdateProfileRe
 	return nil
 }
 
-func (s *ProfileService) GetPersonalInfo(userID uint) (*response.PersonalInfoResponse, error) {
+// UpdateProfileWithMultipart mengupdate profil dengan support form-data dan file upload
+func (s *ProfileService) UpdateProfileWithMultipart(userID uint, req *request.UpdateProfileMultipartRequest, photoURL *string) error {
 	// Cek apakah user ada
 	_, err := s.userRepo.GetUserByID(userID)
+	if err != nil {
+		return err
+	}
+
+	// Update user profile (nama)
+	userUpdates := make(map[string]interface{})
+	if req.Name != nil && *req.Name != "" {
+		userUpdates["nama"] = *req.Name
+	}
+	if len(userUpdates) > 0 {
+		err = s.userRepo.UpdateUserProfile(userID, userUpdates)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Update personal info (birth_date, phone, address, photo_url)
+	personalInfoUpdates := make(map[string]interface{})
+	
+	// Update birth_date jika dikirim
+	if req.BirthDate != nil && *req.BirthDate != "" {
+		birthDate, err := time.Parse("2006-01-02", *req.BirthDate)
+		if err != nil {
+			return errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
+		}
+
+		if birthDate.After(time.Now()) {
+			return errors.New("tanggal lahir tidak boleh di masa depan")
+		}
+
+		personalInfoUpdates["birth_date"] = birthDate
+	}
+
+	// Update phone jika dikirim
+	if req.Phone != nil && *req.Phone != "" {
+		personalInfoUpdates["phone"] = *req.Phone
+	}
+
+	// Update address jika dikirim
+	if req.Address != nil && *req.Address != "" {
+		personalInfoUpdates["address"] = *req.Address
+	}
+
+	// Update photoURL jika ada file baru yang diupload atau URL yang dikirim
+	if photoURL != nil {
+		personalInfoUpdates["photo_url"] = *photoURL
+	} else if req.PhotoURL != nil && *req.PhotoURL != "" {
+		// Jika tidak ada file upload tapi ada photo_url di form
+		personalInfoUpdates["photo_url"] = *req.PhotoURL
+	}
+
+	// Update personal info jika ada perubahan
+	if len(personalInfoUpdates) > 0 {
+		// Cek apakah personal info sudah ada, jika belum buat baru
+		exists, err := s.personalInfoRepo.CheckPersonalInfoExists(userID)
+		if err != nil {
+			return err
+		}
+
+		if !exists {
+			// Ambil user untuk mendapatkan name
+			user, err := s.userRepo.GetUserByID(userID)
+			if err != nil {
+				return err
+			}
+
+			// Buat personal info baru
+			personalInfo := &entity.PersonalInfo{
+				UserID:   userID,
+				Name:     user.Nama,
+			}
+
+			// Set field yang dikirim
+			if birthDate, ok := personalInfoUpdates["birth_date"].(time.Time); ok {
+				personalInfo.BirthDate = &birthDate
+			}
+			if phone, ok := personalInfoUpdates["phone"].(string); ok {
+				personalInfo.Phone = &phone
+			}
+			if address, ok := personalInfoUpdates["address"].(string); ok {
+				personalInfo.Address = &address
+			}
+			if photoURL, ok := personalInfoUpdates["photo_url"].(string); ok {
+				personalInfo.PhotoURL = &photoURL
+			}
+
+			err = s.personalInfoRepo.CreatePersonalInfo(personalInfo)
+			if err != nil {
+				return err
+			}
+		} else {
+			// Update personal info yang sudah ada
+			err = s.personalInfoRepo.UpdatePersonalInfo(userID, personalInfoUpdates)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	// Validasi bahwa ada data untuk diupdate
+	if len(userUpdates) == 0 && len(personalInfoUpdates) == 0 {
+		return errors.New("tidak ada data untuk diupdate")
+	}
+
+	return nil
+}
+
+func (s *ProfileService) GetPersonalInfo(userID uint) (*response.PersonalInfoResponse, error) {
+	// Cek apakah user ada dan ambil data user untuk mendapatkan name
+	user, err := s.userRepo.GetUserByID(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -166,16 +277,17 @@ func (s *ProfileService) GetPersonalInfo(userID uint) (*response.PersonalInfoRes
 	personalInfo, err := s.personalInfoRepo.GetPersonalInfoByUserID(userID)
 	if err != nil {
 		if err.Error() == "personal info tidak ditemukan" {
-			// Return response kosong jika belum ada data
+			// Return response dengan name dari user jika personal info belum ada
 			return &response.PersonalInfoResponse{
-				Name: "",
+				Name: user.Nama, // Ambil name dari user, bukan dari personal_info
 			}, nil
 		}
 		return nil, err
 	}
 
+	// Name diambil dari user.Nama (data dari register/auth), bukan dari personal_info
 	resp := &response.PersonalInfoResponse{
-		Name: personalInfo.Name,
+		Name: user.Nama, // Ambil name dari user, bukan dari personalInfo.Name
 	}
 
 	if personalInfo.BirthDate != nil {
@@ -325,9 +437,10 @@ func (s *ProfileService) UpdatePersonalInfoWithPhoto(userID uint, req *request.U
 // CreatePersonalInfo membuat personal info baru untuk user
 // photoURL adalah path file yang sudah diupload (jika ada)
 // Jika insert gagal, rollback file sudah di-handle di handler
+// Name akan diambil dari data user (register/auth), bukan dari request
 func (s *ProfileService) CreatePersonalInfo(userID uint, req *request.CreatePersonalInfoRequest, photoURL *string) (*response.PersonalInfoResponse, error) {
-	// Cek apakah user ada
-	_, err := s.userRepo.GetUserByID(userID)
+	// Cek apakah user ada dan ambil data user untuk mendapatkan name
+	user, err := s.userRepo.GetUserByID(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -370,9 +483,10 @@ func (s *ProfileService) CreatePersonalInfo(userID uint, req *request.CreatePers
 	}
 
 	// Buat personal info
+	// Name diambil dari user.Nama (data dari register/auth), bukan dari request
 	personalInfo := &entity.PersonalInfo{
 		UserID:    userID,
-		Name:      req.Name,
+		Name:      user.Nama, // Ambil name dari user, bukan dari request
 		BirthDate: &birthDate,
 		Phone:     req.Phone,
 		Address:   req.Address,
@@ -385,8 +499,9 @@ func (s *ProfileService) CreatePersonalInfo(userID uint, req *request.CreatePers
 	}
 
 	// Build response
+	// Name diambil dari user.Nama untuk konsistensi
 	resp := &response.PersonalInfoResponse{
-		Name: personalInfo.Name,
+		Name: user.Nama, // Gunakan name dari user, bukan dari personal_info
 	}
 
 	if personalInfo.BirthDate != nil {
