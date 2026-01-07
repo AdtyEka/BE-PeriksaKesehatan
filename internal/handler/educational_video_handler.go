@@ -39,7 +39,7 @@ func (h *EducationalVideoHandler) AddEducationalVideo(c *gin.Context) {
 		if err.Error() == "video_title tidak boleh kosong" ||
 			err.Error() == "video_url tidak boleh kosong" ||
 			err.Error() == "video_url harus berupa URL yang valid" ||
-			err.Error() == "category_id tidak boleh kosong" ||
+			err.Error() == "category_ids tidak boleh kosong" ||
 			err.Error() == "kategori tidak ditemukan" {
 			utils.BadRequest(c, "Validasi gagal", err.Error())
 			return

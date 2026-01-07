@@ -27,9 +27,9 @@ type GetAllEducationalVideosResponse struct {
 
 // AddEducationalVideoResponse adalah response untuk endpoint add-educational-video
 type AddEducationalVideoResponse struct {
-	ID         uint   `json:"id"`
-	VideoTitle string `json:"video_title"`
-	VideoURL   string `json:"video_url"`
-	CategoryID uint   `json:"category_id"`
+	ID          uint   `json:"id"`
+	VideoTitle  string `json:"video_title"`
+	VideoURL    string `json:"video_url"`
+	CategoryIDs []uint `json:"category_ids"`
 }
 

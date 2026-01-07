@@ -123,6 +123,10 @@ func runMigrations(db *gorm.DB) error {
 		migrationErrors = append(migrationErrors, fmt.Errorf("migrate remove user columns: %w", err))
 	}
 
+	if err := migrateEducationalVideoCategoriesTable(db); err != nil {
+		migrationErrors = append(migrationErrors, fmt.Errorf("migrate educational_video_categories: %w", err))
+	}
+
 	if len(migrationErrors) > 0 {
 		return fmt.Errorf("migration errors: %v", migrationErrors)
 	}
@@ -139,6 +143,7 @@ func autoMigrateTables(db *gorm.DB) error {
 		&entity.HealthAlert{},
 		&entity.Category{},
 		&entity.EducationalVideo{},
+		&entity.EducationalVideoCategory{},
 		&entity.HealthTarget{},
 		&entity.PersonalInfo{},
 	}
@@ -183,10 +188,25 @@ func migrateHealthDataNullable(db *gorm.DB) error {
 // makeColumnNullable mengubah kolom menjadi nullable jika belum nullable.
 // Fungsi ini idempotent dan aman untuk dipanggil berulang kali.
 func makeColumnNullable(db *gorm.DB, tableName, columnName string) error {
-	migrator := db.Migrator()
+	// Cek apakah kolom ada dengan query langsung ke information_schema
+	var columnExists bool
+	checkColumnSQL := `
+		SELECT EXISTS (
+			SELECT 1 
+			FROM information_schema.columns 
+			WHERE table_schema = $1 
+			AND table_name = $2 
+			AND column_name = $3
+		)
+	`
+	err := db.Raw(checkColumnSQL, defaultSchema, tableName, columnName).Scan(&columnExists).Error
+	if err != nil {
+		log.Printf("[DB] Warning: Gagal mengecek kolom %s.%s: %v", tableName, columnName, err)
+		// Coba langsung alter jika kolom mungkin ada
+		return alterColumnNullable(db, tableName, columnName, true)
+	}
 
-	// Cek apakah kolom ada
-	if !migrator.HasColumn(&entity.HealthData{}, columnName) {
+	if !columnExists {
 		log.Printf("[DB] Kolom %s.%s tidak ditemukan, skip", tableName, columnName)
 		return nil
 	}
@@ -248,7 +268,8 @@ func alterColumnNullable(db *gorm.DB, tableName, columnName string, nullable boo
 	return nil
 }
 
-// migrateEducationalVideosTable menambahkan kolom category_id ke tabel educational_videos.
+// migrateEducationalVideosTable menambahkan kolom category_id ke tabel educational_videos
+// dan memastikan kolom tersebut nullable untuk backward compatibility.
 // Migration ini idempotent dan aman untuk Supabase/PostgreSQL.
 func migrateEducationalVideosTable(db *gorm.DB) error {
 	migrator := db.Migrator()
@@ -258,22 +279,25 @@ func migrateEducationalVideosTable(db *gorm.DB) error {
 		return nil
 	}
 
-	if migrator.HasColumn(&entity.EducationalVideo{}, "category_id") {
-		log.Println("[DB] Kolom category_id sudah ada di educational_videos, skip")
-		return nil
-	}
-
-	// Tambahkan kolom category_id (nullable untuk backward compatibility)
-	alterSQL := "ALTER TABLE educational_videos ADD COLUMN category_id INTEGER"
-	if err := db.Exec(alterSQL).Error; err != nil {
-		if isAlreadyExistsError(err) {
-			log.Println("[DB] Kolom category_id sudah ada")
-			return nil
+	// Jika kolom belum ada, tambahkan sebagai nullable
+	if !migrator.HasColumn(&entity.EducationalVideo{}, "category_id") {
+		alterSQL := "ALTER TABLE educational_videos ADD COLUMN category_id INTEGER"
+		if err := db.Exec(alterSQL).Error; err != nil {
+			if isAlreadyExistsError(err) {
+				log.Println("[DB] Kolom category_id sudah ada")
+			} else {
+				return fmt.Errorf("gagal menambahkan kolom category_id: %w", err)
+			}
+		} else {
+			log.Println("[DB] Kolom category_id berhasil ditambahkan ke educational_videos")
 		}
-		return fmt.Errorf("gagal menambahkan kolom category_id: %w", err)
 	}
 
-	log.Println("[DB] Kolom category_id berhasil ditambahkan ke educational_videos")
+	// Pastikan kolom category_id nullable (untuk backward compatibility dengan data lama)
+	if err := makeColumnNullable(db, "educational_videos", "category_id"); err != nil {
+		log.Printf("[DB] Warning: Gagal membuat category_id nullable: %v", err)
+		// Tidak return error, karena ini untuk backward compatibility
+	}
 
 	// Tambahkan index untuk category_id
 	if err := createIndexIfNotExists(db, "educational_videos", "category_id", "idx_educational_videos_category_id"); err != nil {
@@ -491,4 +515,21 @@ func isAlreadyExistsError(err error) bool {
 	errMsg := strings.ToLower(err.Error())
 	return strings.Contains(errMsg, "already exists") ||
 		strings.Contains(errMsg, "duplicate")
+}
+
+// migrateEducationalVideoCategoriesTable membuat tabel junction untuk relasi many-to-many
+// antara educational_videos dan categories
+// Migration ini idempotent dan aman untuk Supabase/PostgreSQL
+func migrateEducationalVideoCategoriesTable(db *gorm.DB) error {
+	migrator := db.Migrator()
+
+	if !migrator.HasTable(&entity.EducationalVideoCategory{}) {
+		log.Println("[DB] Tabel educational_video_categories belum ada, akan dibuat oleh AutoMigrate")
+		return nil
+	}
+
+	// Pastikan tabel sudah ada dengan struktur yang benar
+	// AutoMigrate sudah membuat tabel, tapi kita pastikan dengan migration manual jika perlu
+	log.Println("[DB] Tabel educational_video_categories sudah ada atau berhasil dibuat")
+	return nil
 }

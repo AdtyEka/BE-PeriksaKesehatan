@@ -25,41 +25,70 @@ func NewEducationalVideoService(educationalVideoRepo *repository.EducationalVide
 	}
 }
 
-// AddEducationalVideo menambahkan video edukasi baru
+// AddEducationalVideo menambahkan video edukasi baru dengan multiple categories
 func (s *EducationalVideoService) AddEducationalVideo(req *request.EducationalVideoRequest) (*response.AddEducationalVideoResponse, error) {
 	// Validasi
 	if err := s.validateVideoRequest(req); err != nil {
 		return nil, err
 	}
 
-	// Validasi kategori exists
-	category, err := s.categoryRepo.GetCategoryByID(req.CategoryID)
-	if err != nil {
-		return nil, errors.New("kategori tidak ditemukan")
+	// Validasi category_ids tidak kosong
+	if len(req.CategoryIDs) == 0 {
+		return nil, errors.New("category_ids tidak boleh kosong")
 	}
 
-	// Buat entity
+	// Validasi semua kategori exists
+	categories, err := s.validateCategoriesExist(req.CategoryIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Buat entity video (tanpa category_id untuk data baru)
 	video := &entity.EducationalVideo{
 		VideoTitle:      strings.TrimSpace(req.VideoTitle),
 		VideoURL:        strings.TrimSpace(req.VideoURL),
-		CategoryID:      req.CategoryID,
-		HealthCondition: category.Kategori,
+		HealthCondition: categories[0].Kategori, // Gunakan kategori pertama untuk health_condition (backward compatibility)
 	}
 
-	// Simpan ke database
-	if err := s.educationalVideoRepo.CreateEducationalVideo(video); err != nil {
+	// Simpan video beserta relasi kategori dengan transaksi atomic
+	if err := s.educationalVideoRepo.CreateEducationalVideoWithCategories(video, req.CategoryIDs); err != nil {
 		return nil, err
 	}
 
 	// Buat response
 	resp := &response.AddEducationalVideoResponse{
-		ID:         video.ID,
-		VideoTitle: video.VideoTitle,
-		VideoURL:   video.VideoURL,
-		CategoryID: video.CategoryID,
+		ID:          video.ID,
+		VideoTitle:  video.VideoTitle,
+		VideoURL:    video.VideoURL,
+		CategoryIDs: req.CategoryIDs,
 	}
 
 	return resp, nil
+}
+
+// validateCategoriesExist memvalidasi bahwa semua category IDs ada di database
+func (s *EducationalVideoService) validateCategoriesExist(categoryIDs []uint) ([]entity.Category, error) {
+	if len(categoryIDs) == 0 {
+		return nil, errors.New("category_ids tidak boleh kosong")
+	}
+
+	categories := make([]entity.Category, 0, len(categoryIDs))
+	notFoundIDs := make([]uint, 0)
+
+	for _, categoryID := range categoryIDs {
+		category, err := s.categoryRepo.GetCategoryByID(categoryID)
+		if err != nil {
+			notFoundIDs = append(notFoundIDs, categoryID)
+		} else {
+			categories = append(categories, *category)
+		}
+	}
+
+	if len(notFoundIDs) > 0 {
+		return nil, errors.New("kategori tidak ditemukan")
+	}
+
+	return categories, nil
 }
 
 // GetAllEducationalVideos mengambil semua kategori beserta videonya
@@ -165,9 +194,9 @@ func (s *EducationalVideoService) validateVideoRequest(req *request.EducationalV
 		return errors.New("video_url harus berupa URL yang valid")
 	}
 
-	// Validasi category_id tidak kosong
-	if req.CategoryID == 0 {
-		return errors.New("category_id tidak boleh kosong")
+	// Validasi category_ids tidak kosong
+	if len(req.CategoryIDs) == 0 {
+		return errors.New("category_ids tidak boleh kosong")
 	}
 
 	return nil
