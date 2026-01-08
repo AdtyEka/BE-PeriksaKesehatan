@@ -50,12 +50,40 @@ type ActivitySummary struct {
 	ChangePercent  float64 `json:"change_percent"`   // Persentase perubahan aktivitas
 }
 
-// TrendChartsResponse berisi data time-series untuk grafik tren
+// TrendChartsResponse berisi data time-series untuk grafik tren dengan filter waktu
 type TrendChartsResponse struct {
-	BloodPressure []BloodPressureTrendPoint `json:"blood_pressure,omitempty"` // Data tren tekanan darah
-	BloodSugar    []BloodSugarTrendPoint    `json:"blood_sugar,omitempty"`    // Data tren gula darah
-	Weight        []WeightTrendPoint        `json:"weight,omitempty"`         // Data tren berat badan
-	Activity      []ActivityTrendPoint      `json:"activity,omitempty"`       // Data tren aktivitas
+	BloodPressure BloodPressureTrendCharts `json:"blood_pressure,omitempty"` // Data tren tekanan darah
+	BloodSugar    BloodSugarTrendCharts    `json:"blood_sugar,omitempty"`    // Data tren gula darah
+	Weight        WeightTrendCharts        `json:"weight,omitempty"`         // Data tren berat badan
+	Activity      ActivityTrendCharts      `json:"activity,omitempty"`       // Data tren aktivitas
+}
+
+// BloodPressureTrendCharts berisi data tren tekanan darah dengan filter waktu
+type BloodPressureTrendCharts struct {
+	Days7    []BloodPressureTrendPoint `json:"7Days"`    // Data 7 hari terakhir
+	Month1   []BloodPressureTrendPoint `json:"1Month"`   // Data 30 hari terakhir
+	Months3  []BloodPressureTrendPoint `json:"3Months"`  // Data 90 hari terakhir
+}
+
+// BloodSugarTrendCharts berisi data tren gula darah dengan filter waktu
+type BloodSugarTrendCharts struct {
+	Days7    []BloodSugarTrendPoint `json:"7Days"`    // Data 7 hari terakhir
+	Month1   []BloodSugarTrendPoint `json:"1Month"`   // Data 30 hari terakhir
+	Months3  []BloodSugarTrendPoint `json:"3Months"`  // Data 90 hari terakhir
+}
+
+// WeightTrendCharts berisi data tren berat badan dengan filter waktu
+type WeightTrendCharts struct {
+	Days7    []WeightTrendPoint `json:"7Days"`    // Data 7 hari terakhir
+	Month1   []WeightTrendPoint `json:"1Month"`   // Data 30 hari terakhir
+	Months3  []WeightTrendPoint `json:"3Months"`  // Data 90 hari terakhir
+}
+
+// ActivityTrendCharts berisi data tren aktivitas dengan filter waktu
+type ActivityTrendCharts struct {
+	Days7    []ActivityTrendPoint `json:"7Days"`    // Data 7 hari terakhir
+	Month1   []ActivityTrendPoint `json:"1Month"`   // Data 30 hari terakhir
+	Months3  []ActivityTrendPoint `json:"3Months"`  // Data 90 hari terakhir
 }
 
 // BloodPressureTrendPoint satu titik data untuk grafik tekanan darah
