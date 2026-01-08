@@ -15,6 +15,14 @@ const (
 	CategoryBeratBadan = "berat_badan"
 )
 
+// Mapping kategori alert ke category_id untuk video edukasi
+const (
+	CategoryIDDiabetes   = uint(1)
+	CategoryIDHipertensi = uint(2)
+	CategoryIDJantung    = uint(3)
+	CategoryIDBeratBadan = uint(4)
+)
+
 type HealthAlertService struct {
 	healthAlertRepo      *repository.HealthAlertRepository
 	healthDataRepo       *repository.HealthDataRepository
@@ -86,6 +94,16 @@ func (s *HealthAlertService) CheckHealthAlerts(userID uint) (*response.CheckHeal
 		}
 	}
 
+	// Loop setiap alert yang sudah terbentuk dan isi education_videos
+	// Hanya untuk alert dengan status RENDAH atau TINGGI
+	for i := range alerts {
+		if alerts[i].Status == StatusRendah || alerts[i].Status == StatusTinggi {
+			// Ambil video edukasi berdasarkan kategori alert
+			videos := s.getEducationVideosByCategory(alerts[i].Category)
+			alerts[i].EducationVideos = videos
+		}
+	}
+
 	return &response.CheckHealthAlertsResponse{
 		Alerts: alerts,
 	}, nil
@@ -148,9 +166,6 @@ func (s *HealthAlertService) evaluateBloodPressure(systolic, diastolic int, reco
 		return nil
 	}
 
-	// Ambil video edukasi
-	videos := s.getEducationVideosByCategory(CategoryHipertensi)
-
 	return &response.HealthAlertResponse{
 		AlertType:        alertType,
 		Category:         CategoryHipertensi,
@@ -162,7 +177,7 @@ func (s *HealthAlertService) evaluateBloodPressure(systolic, diastolic int, reco
 		ImmediateActions: immediateActions,
 		MedicalAttention: medicalAttention,
 		ManagementTips:   managementTips,
-		EducationVideos:  videos,
+		EducationVideos:  []response.EducationVideoItem{}, // Akan diisi di CheckHealthAlerts
 	}
 }
 
@@ -224,9 +239,6 @@ func (s *HealthAlertService) evaluateBloodSugar(bloodSugar int, recordedAt time.
 		return nil
 	}
 
-	// Ambil video edukasi
-	videos := s.getEducationVideosByCategory(CategoryDiabetes)
-
 	return &response.HealthAlertResponse{
 		AlertType:        alertType,
 		Category:         CategoryDiabetes,
@@ -238,7 +250,7 @@ func (s *HealthAlertService) evaluateBloodSugar(bloodSugar int, recordedAt time.
 		ImmediateActions: immediateActions,
 		MedicalAttention: medicalAttention,
 		ManagementTips:   managementTips,
-		EducationVideos:  videos,
+		EducationVideos:  []response.EducationVideoItem{}, // Akan diisi di CheckHealthAlerts
 	}
 }
 
@@ -302,9 +314,6 @@ func (s *HealthAlertService) evaluateHeartRate(heartRate int, recordedAt time.Ti
 		return nil
 	}
 
-	// Ambil video edukasi
-	videos := s.getEducationVideosByCategory(CategoryJantung)
-
 	return &response.HealthAlertResponse{
 		AlertType:        alertType,
 		Category:         CategoryJantung,
@@ -316,7 +325,7 @@ func (s *HealthAlertService) evaluateHeartRate(heartRate int, recordedAt time.Ti
 		ImmediateActions: immediateActions,
 		MedicalAttention: medicalAttention,
 		ManagementTips:   managementTips,
-		EducationVideos:  videos,
+		EducationVideos:  []response.EducationVideoItem{}, // Akan diisi di CheckHealthAlerts
 	}
 }
 
@@ -383,8 +392,6 @@ func (s *HealthAlertService) evaluateBMI(weightKg float64, heightCM int, recorde
 		}
 	}
 
-	videos := s.getEducationVideosByCategory(CategoryBeratBadan)
-
 	return &response.HealthAlertResponse{
 		AlertType:        alertType,
 		Category:         CategoryBeratBadan,
@@ -396,7 +403,7 @@ func (s *HealthAlertService) evaluateBMI(weightKg float64, heightCM int, recorde
 		ImmediateActions: immediateActions,
 		MedicalAttention: medicalAttention,
 		ManagementTips:   managementTips,
-		EducationVideos:  videos,
+		EducationVideos:  []response.EducationVideoItem{}, // Akan diisi di CheckHealthAlerts
 	}
 }
 
@@ -444,20 +451,52 @@ func (s *HealthAlertService) getHeartRateStatus(heartRate int) string {
 	return StatusTinggi
 }
 
-// getEducationVideosByCategory mengambil video edukasi berdasarkan kategori
+// getCategoryIDByCategory mengembalikan category_id berdasarkan kategori alert
+func (s *HealthAlertService) getCategoryIDByCategory(category string) (uint, bool) {
+	switch category {
+	case CategoryDiabetes:
+		return CategoryIDDiabetes, true
+	case CategoryHipertensi:
+		return CategoryIDHipertensi, true
+	case CategoryJantung:
+		return CategoryIDJantung, true
+	case CategoryBeratBadan:
+		return CategoryIDBeratBadan, true
+	default:
+		return 0, false
+	}
+}
+
+// getEducationVideosByCategory mengambil video edukasi berdasarkan kategori alert
+// Menggunakan category_id untuk mengambil video dari API education
 func (s *HealthAlertService) getEducationVideosByCategory(category string) []response.EducationVideoItem {
-	videos, err := s.educationalVideoRepo.GetEducationalVideosByCategoryKategori(category)
+	// Map kategori ke category_id
+	categoryID, ok := s.getCategoryIDByCategory(category)
+	if !ok {
+		// Jika kategori tidak dikenal, return empty array
+		return []response.EducationVideoItem{}
+	}
+
+	// Ambil video berdasarkan category_id
+	videos, err := s.educationalVideoRepo.GetEducationalVideosByCategoryID(categoryID)
 	if err != nil {
 		// Jika error, return empty array (tidak mengganggu response utama)
 		return []response.EducationVideoItem{}
 	}
 
+	// Jika tidak ada video, return empty array
+	if len(videos) == 0 {
+		return []response.EducationVideoItem{}
+	}
+
+	// Convert ke response format dengan category_id
 	result := make([]response.EducationVideoItem, 0, len(videos))
 	for _, video := range videos {
 		result = append(result, response.EducationVideoItem{
-			ID:    video.ID,
-			Title: video.VideoTitle,
-			URL:   video.VideoURL,
+			ID:         video.ID,
+			VideoTitle: video.VideoTitle,
+			VideoURL:   video.VideoURL,
+			CategoryID: categoryID,
 		})
 	}
 

@@ -4,9 +4,10 @@ import "time"
 
 // EducationVideoItem adalah item video edukasi dalam alert
 type EducationVideoItem struct {
-	ID    uint   `json:"id"`
-	Title string `json:"title"`
-	URL   string `json:"url"`
+	ID         uint   `json:"id"`
+	VideoTitle string `json:"video_title"`
+	VideoURL   string `json:"video_url"`
+	CategoryID uint   `json:"category_id"`
 }
 
 // HealthAlertResponse adalah response untuk health alert
