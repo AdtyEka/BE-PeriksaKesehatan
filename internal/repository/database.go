@@ -111,6 +111,10 @@ func runMigrations(db *gorm.DB) error {
 		migrationErrors = append(migrationErrors, fmt.Errorf("migrate health_data nullable: %w", err))
 	}
 
+	if err := migrateHealthDataDailyRecord(db); err != nil {
+		migrationErrors = append(migrationErrors, fmt.Errorf("migrate health_data daily record: %w", err))
+	}
+
 	if err := migrateEducationalVideosTable(db); err != nil {
 		migrationErrors = append(migrationErrors, fmt.Errorf("migrate educational_videos: %w", err))
 	}
@@ -172,6 +176,7 @@ func migrateHealthDataNullable(db *gorm.DB) error {
 		"diastolic",
 		"blood_sugar",
 		"weight",
+		"height_cm",
 		"heart_rate",
 	}
 
@@ -265,6 +270,76 @@ func alterColumnNullable(db *gorm.DB, tableName, columnName string, nullable boo
 	}
 
 	log.Printf("[DB] Kolom %s.%s berhasil diubah menjadi nullable", tableName, columnName)
+	return nil
+}
+
+// migrateHealthDataDailyRecord menambahkan kolom record_date dan expired_at untuk daily record system
+// Migration ini idempotent dan aman untuk Supabase/PostgreSQL
+func migrateHealthDataDailyRecord(db *gorm.DB) error {
+	migrator := db.Migrator()
+
+	if !migrator.HasTable(&entity.HealthData{}) {
+		log.Println("[DB] Tabel health_data belum ada, akan dibuat oleh AutoMigrate")
+		return nil
+	}
+
+	// Tambahkan kolom record_date jika belum ada
+	if !migrator.HasColumn(&entity.HealthData{}, "record_date") {
+		// Set default value untuk record yang sudah ada: gunakan DATE(created_at)
+		alterSQL := `
+			ALTER TABLE health_data 
+			ADD COLUMN record_date DATE NOT NULL DEFAULT CURRENT_DATE
+		`
+		if err := db.Exec(alterSQL).Error; err != nil {
+			if isAlreadyExistsError(err) {
+				log.Println("[DB] Kolom record_date sudah ada")
+			} else {
+				return fmt.Errorf("gagal menambahkan kolom record_date: %w", err)
+			}
+		} else {
+			log.Println("[DB] Kolom record_date berhasil ditambahkan")
+			
+			// Update record yang sudah ada: set record_date = DATE(created_at)
+			updateSQL := `
+				UPDATE health_data 
+				SET record_date = DATE(created_at)
+				WHERE record_date = CURRENT_DATE
+			`
+			if err := db.Exec(updateSQL).Error; err != nil {
+				log.Printf("[DB] Warning: Gagal update record_date untuk data lama: %v", err)
+				// Tidak return error, karena ini untuk backward compatibility
+			}
+			
+			// Hapus default setelah update data lama
+			removeDefaultSQL := `ALTER TABLE health_data ALTER COLUMN record_date DROP DEFAULT`
+			if err := db.Exec(removeDefaultSQL).Error; err != nil {
+				log.Printf("[DB] Warning: Gagal menghapus default record_date: %v", err)
+				// Tidak return error, karena default tidak critical
+			}
+		}
+	}
+
+	// Tambahkan index untuk record_date jika belum ada
+	if err := createIndexIfNotExists(db, "health_data", "record_date", "idx_health_data_record_date"); err != nil {
+		log.Printf("[DB] Warning: Gagal menambahkan index untuk record_date: %v", err)
+		// Tidak return error, karena index bukan critical
+	}
+
+	// Tambahkan kolom expired_at jika belum ada
+	if !migrator.HasColumn(&entity.HealthData{}, "expired_at") {
+		alterSQL := `ALTER TABLE health_data ADD COLUMN expired_at TIMESTAMP`
+		if err := db.Exec(alterSQL).Error; err != nil {
+			if isAlreadyExistsError(err) {
+				log.Println("[DB] Kolom expired_at sudah ada")
+			} else {
+				return fmt.Errorf("gagal menambahkan kolom expired_at: %w", err)
+			}
+		} else {
+			log.Println("[DB] Kolom expired_at berhasil ditambahkan")
+		}
+	}
+
+	log.Println("[DB] Migration health_data daily record berhasil")
 	return nil
 }
 

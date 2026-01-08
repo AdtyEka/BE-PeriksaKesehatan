@@ -6,6 +6,7 @@ import (
 	"BE-PeriksaKesehatan/internal/model/entity"
 	"BE-PeriksaKesehatan/internal/repository"
 	"errors"
+	"time"
 
 	"BE-PeriksaKesehatan/pkg/utils"
 )
@@ -23,30 +24,28 @@ func NewHealthDataService(healthDataRepo *repository.HealthDataRepository) *Heal
 }
 
 func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDataRequest) (*response.HealthDataResponse, error) {
-	// Cek apakah ada record terakhir milik user
-	existingData, err := s.healthDataRepo.GetLatestHealthDataByUserID(userID)
+	// Ambil CURRENT_DATE (hari ini)
+	currentDate := time.Now()
+	
+	// Cari record dengan record_date = hari ini
+	existingData, err := s.healthDataRepo.GetHealthDataByUserIDAndDate(userID, currentDate)
 	if err != nil {
 		return nil, err
 	}
 
 	var healthData *entity.HealthData
-	var isUpdate bool
 
 	if existingData != nil {
-		// UPDATE: Merge data lama + data baru
-		// Field yang tidak dikirim (nil) akan tetap menggunakan nilai lama
+		// UPDATE: Partial update pada record hari ini
+		// Field yang tidak dikirim (nil) TIDAK DIUBAH
 		healthData = existingData
-		isUpdate = true
 
-		// Untuk update, validasi lebih fleksibel: Activity saja sudah cukup
-		// Tapi tetap validasi field yang dikirim jika ada
+		// Validasi field yang dikirim (jika ada)
 		if req.Systolic != nil || req.Diastolic != nil {
 			if (req.Systolic != nil && req.Diastolic == nil) ||
 				(req.Systolic == nil && req.Diastolic != nil) {
 				return nil, errors.New("systolic dan diastolic harus dikirim bersamaan")
 			}
-			// Setelah cek di atas, kita tahu keduanya tidak nil atau keduanya nil
-			// Validasi hanya jika keduanya tidak nil
 			if req.Systolic != nil && req.Diastolic != nil {
 				if err := utils.ValidateNullableInt(req.Systolic, "systolic", 0, 180); err != nil {
 					return nil, err
@@ -100,14 +99,7 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 			healthData.Activity = req.Activity
 		}
 
-		// Validasi: minimal ada 1 field yang akan di-update
-		hasUpdate := req.Systolic != nil || req.Diastolic != nil || req.BloodSugar != nil ||
-			req.Weight != nil || req.Height != nil || req.HeartRate != nil || req.Activity != nil
-		if !hasUpdate {
-			return nil, errors.New("minimal satu field harus diisi untuk update")
-		}
-
-		// Lakukan update
+		// Lakukan update (partial update - hanya field yang tidak nil)
 		if err := s.healthDataRepo.UpdateHealthData(healthData); err != nil {
 			return nil, err
 		}
@@ -118,16 +110,55 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 			return nil, err
 		}
 	} else {
-		// INSERT: Buat record baru
-		// Untuk insert, validasi lebih ketat: minimal satu metrik kesehatan harus diisi
-		if err := s.ValidateHealthData(req); err != nil {
-			return nil, err
+		// INSERT: Buat record baru untuk hari ini
+		// User boleh mengirim 1 field saja atau bahkan kosong (semua NULL)
+		// Validasi hanya untuk field yang dikirim (jika ada)
+		if req.Systolic != nil || req.Diastolic != nil {
+			if (req.Systolic != nil && req.Diastolic == nil) ||
+				(req.Systolic == nil && req.Diastolic != nil) {
+				return nil, errors.New("systolic dan diastolic harus dikirim bersamaan")
+			}
+			if req.Systolic != nil && req.Diastolic != nil {
+				if err := utils.ValidateNullableInt(req.Systolic, "systolic", 0, 180); err != nil {
+					return nil, err
+				}
+				if err := utils.ValidateNullableInt(req.Diastolic, "diastolic", 0, 120); err != nil {
+					return nil, err
+				}
+			}
 		}
+		if req.BloodSugar != nil {
+			if err := utils.ValidateNullableInt(req.BloodSugar, "blood_sugar", 0, 300); err != nil {
+				return nil, err
+			}
+		}
+		if req.Weight != nil {
+			if err := utils.ValidateNullableFloat64(req.Weight, "weight", 20.0, 200.0); err != nil {
+				return nil, err
+			}
+		}
+		if req.Height != nil {
+			if err := utils.ValidateNullableInt(req.Height, "height", 50, 250); err != nil {
+				return nil, err
+			}
+		}
+		if req.HeartRate != nil {
+			if err := utils.ValidateNullableInt(req.HeartRate, "heart_rate", 0, 180); err != nil {
+				return nil, err
+			}
+		}
+
+		// Set record_date = hari ini
+		// Set expired_at = hari ini 23:59:59
+		expiredAt := time.Date(currentDate.Year(), currentDate.Month(), currentDate.Day(), 23, 59, 59, 0, currentDate.Location())
 
 		healthData = &entity.HealthData{
-			UserID: userID,
+			UserID:     userID,
+			RecordDate: currentDate,
+			ExpiredAt:  &expiredAt,
 		}
 
+		// Set field yang dikirim (field yang tidak dikirim tetap NULL)
 		if req.Systolic != nil {
 			healthData.Systolic = req.Systolic
 		}
@@ -171,13 +202,12 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 	resp.HeartRate = healthData.HeartRate
 	resp.Activity = healthData.Activity
 
-	_ = isUpdate // Mark as used (untuk debugging jika diperlukan)
-
 	return resp, nil
 }
 
-// GetHealthDataByUserID mengembalikan 1 record health data terbaru milik user
-// Menggunakan logic inkremental: selalu mengembalikan record aktif terbaru
+// GetHealthDataByUserID mengembalikan 1 record health data untuk hari ini milik user
+// Menggunakan daily record system: mengembalikan record dengan record_date = CURRENT_DATE
 func (s *HealthDataService) GetHealthDataByUserID(userID uint) (*entity.HealthData, error) {
-	return s.healthDataRepo.GetLatestHealthDataByUserID(userID)
+	currentDate := time.Now()
+	return s.healthDataRepo.GetHealthDataByUserIDAndDate(userID, currentDate)
 }

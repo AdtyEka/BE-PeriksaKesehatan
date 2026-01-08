@@ -100,6 +100,22 @@ func (r *HealthDataRepository) GetLatestHealthDataByUserID(userID uint) (*entity
 	return &healthData, nil
 }
 
+// GetHealthDataByUserIDAndDate mencari record berdasarkan user_id dan record_date
+// Digunakan untuk daily record system (1 record per hari per user)
+func (r *HealthDataRepository) GetHealthDataByUserIDAndDate(userID uint, date time.Time) (*entity.HealthData, error) {
+	var healthData entity.HealthData
+	// Gunakan DATE() untuk membandingkan hanya bagian tanggal, bukan waktu
+	result := r.db.Where("user_id = ? AND DATE(record_date) = DATE(?)", userID, date).
+		First(&healthData)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, result.Error
+	}
+	return &healthData, nil
+}
+
 // UpdateHealthData melakukan partial update pada health data
 // Hanya field yang tidak nil yang akan di-update
 // Field yang nil akan diabaikan (tidak di-overwrite dengan NULL)

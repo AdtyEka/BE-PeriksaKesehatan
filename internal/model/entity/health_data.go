@@ -7,15 +7,18 @@ type HealthData struct {
 	UserID     uint      `gorm:"not null;index" json:"user_id"`          // Foreign key ke users (referensi ke User.ID) - TETAP WAJIB
 	User       User      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"` // Relasi ke User (opsional untuk query)
 	
-	// Field nullable-ready (akan nullable di DB setelah migration)
-	// TODO: Update gorm tag setelah DB migration: gorm:"type:int" (remove "not null")
-	Systolic   *int      `gorm:"not null" json:"systolic"`                // Tekanan darah sistolik (mmHg) - nullable-ready
-	Diastolic  *int      `gorm:"not null" json:"diastolic"`              // Tekanan darah diastolik (mmHg) - nullable-ready
-	BloodSugar *int      `gorm:"not null" json:"blood_sugar"`           // Gula darah (mg/dL) - nullable-ready
-	Weight     *float64  `gorm:"not null" json:"weight"`                 // Berat badan (kg) - nullable-ready
-	HeightCM   *int      `gorm:"type:int;column:height_cm" json:"height,omitempty"` // Tinggi badan dalam cm
-	HeartRate  *int      `gorm:"not null" json:"heart_rate"`             // Detak jantung (bpm) - nullable-ready
-	Activity   *string   `gorm:"type:text" json:"activity"`               // Aktivitas terbaru (opsional) - sudah nullable dari awal
+	// Field kesehatan - SEMUA NULLABLE (tidak wajib)
+	Systolic   *int      `gorm:"type:int" json:"systolic"`                // Tekanan darah sistolik (mmHg) - nullable
+	Diastolic  *int      `gorm:"type:int" json:"diastolic"`              // Tekanan darah diastolik (mmHg) - nullable
+	BloodSugar *int      `gorm:"type:int" json:"blood_sugar"`           // Gula darah (mg/dL) - nullable
+	Weight     *float64  `gorm:"type:double precision" json:"weight"`                 // Berat badan (kg) - nullable
+	HeightCM   *int      `gorm:"type:int;column:height_cm" json:"height,omitempty"` // Tinggi badan dalam cm - nullable
+	HeartRate  *int      `gorm:"type:int" json:"heart_rate"`             // Detak jantung (bpm) - nullable
+	Activity   *string   `gorm:"type:text" json:"activity"`               // Aktivitas terbaru - nullable
+	
+	// Field untuk daily record system
+	RecordDate time.Time `gorm:"type:date;not null;index" json:"record_date"` // Tanggal record (1 record per hari per user)
+	ExpiredAt  *time.Time `gorm:"type:timestamp" json:"expired_at,omitempty"` // Waktu expired (23:59:59 hari ini) - nullable
 	
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
