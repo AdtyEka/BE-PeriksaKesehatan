@@ -4,9 +4,48 @@ import "time"
 
 // HealthHistoryResponse adalah response utama untuk riwayat kesehatan
 type HealthHistoryResponse struct {
-	Summary      HealthSummaryResponse      `json:"summary"`       // Ringkasan statistik
-	TrendCharts  TrendChartsResponse        `json:"trend_charts"`  // Data grafik tren
-	ReadingHistory []ReadingHistoryResponse `json:"reading_history"` // Catatan pembacaan kronologis
+	Summary        HealthSummaryResponse      `json:"summary"`         // Ringkasan statistik (untuk internal service)
+	TrendCharts    TrendChartsResponse        `json:"trend_charts"`    // Data grafik tren
+	ReadingHistory []ReadingHistoryResponse   `json:"reading_history"` // Catatan pembacaan kronologis (flat, untuk internal service)
+}
+
+// HealthHistorySummaryByRange membungkus ringkasan statistik per rentang waktu
+// Struktur ini digunakan khusus untuk response API agar sesuai kebutuhan frontend:
+// {
+//   "summary": {
+//     "7Days": { ... },
+//     "1Month": { ... },
+//     "3Months": { ... }
+//   },
+//   ...
+// }
+type HealthHistorySummaryByRange struct {
+	Days7   *HealthSummaryResponse `json:"7Days,omitempty"`   // Ringkasan untuk 7 hari terakhir
+	Month1  *HealthSummaryResponse `json:"1Month,omitempty"`  // Ringkasan untuk 30 hari terakhir
+	Months3 *HealthSummaryResponse `json:"3Months,omitempty"` // Ringkasan untuk 3 bulan terakhir
+}
+
+// HealthReadingHistoryByRange membungkus riwayat pembacaan per rentang waktu
+// {
+//   "reading_history": {
+//     "7Days": [ ... ],
+//     "1Month": [ ... ],
+//     "3Months": [ ... ]
+//   }
+// }
+type HealthReadingHistoryByRange struct {
+	Days7   []ReadingHistoryResponse `json:"7Days,omitempty"`   // Riwayat untuk 7 hari terakhir
+	Month1  []ReadingHistoryResponse `json:"1Month,omitempty"`  // Riwayat untuk 30 hari terakhir
+	Months3 []ReadingHistoryResponse `json:"3Months,omitempty"` // Riwayat untuk 3 bulan terakhir
+}
+
+// HealthHistoryAPIResponse adalah bentuk response yang dikirimkan ke client
+// dengan struktur summary & reading_history yang sudah dipisah per rentang waktu.
+// TrendCharts tetap sama seperti sebelumnya.
+type HealthHistoryAPIResponse struct {
+	Summary        HealthHistorySummaryByRange  `json:"summary"`
+	TrendCharts    TrendChartsResponse          `json:"trend_charts"`
+	ReadingHistory HealthReadingHistoryByRange  `json:"reading_history"`
 }
 
 // HealthSummaryResponse berisi ringkasan statistik untuk semua metrik

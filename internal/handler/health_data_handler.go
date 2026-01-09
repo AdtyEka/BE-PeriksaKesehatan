@@ -131,7 +131,7 @@ func (h *HealthDataHandler) GetHealthHistory(c *gin.Context) {
 		req.TimeRange = "7days"
 	}
 
-	// Panggil service untuk mendapatkan riwayat kesehatan
+	// Panggil service untuk mendapatkan riwayat kesehatan (struktur internal)
 	resp, err := h.healthDataService.GetHealthHistory(userID, &req)
 	if err != nil {
 		if err.Error() == "start_date dan end_date wajib diisi untuk custom range" {
@@ -142,8 +142,41 @@ func (h *HealthDataHandler) GetHealthHistory(c *gin.Context) {
 		return
 	}
 
-	// Response sukses
-	utils.SuccessResponse(c, http.StatusOK, "Riwayat kesehatan berhasil diambil", resp)
+	// Mapping ke struktur response API:
+	// summary dan reading_history dibungkus per rentang waktu (7Days, 1Month, 3Months)
+
+	apiResp := response.HealthHistoryAPIResponse{
+		TrendCharts: resp.TrendCharts, // Tetap sama seperti sebelumnya
+	}
+
+	// Tentukan ke bucket mana summary & reading_history dimasukkan
+	timeRange := strings.ToLower(req.TimeRange)
+	if timeRange == "" {
+		timeRange = "7days"
+	}
+
+	switch timeRange {
+	case "30days":
+		// Masukkan ke 1Month
+		apiResp.Summary.Month1 = &resp.Summary
+		apiResp.ReadingHistory.Month1 = resp.ReadingHistory
+	case "3months":
+		// Masukkan ke 3Months
+		apiResp.Summary.Months3 = &resp.Summary
+		apiResp.ReadingHistory.Months3 = resp.ReadingHistory
+	default:
+		// Default: 7days
+		apiResp.Summary.Days7 = &resp.Summary
+		apiResp.ReadingHistory.Days7 = resp.ReadingHistory
+	}
+
+	// Response sukses dengan bentuk JSON:
+	// {
+	//   "summary": { "7Days": {...} / "1Month": {...} / "3Months": {...} },
+	//   "trend_charts": { ... (tetap sama) ... },
+	//   "reading_history": { "7Days": [...], "1Month": [...], "3Months": [...] }
+	// }
+	utils.SuccessResponse(c, http.StatusOK, "Riwayat kesehatan berhasil diambil", apiResp)
 }
 
 // DownloadHealthReport menangani request untuk mengunduh laporan riwayat kesehatan dalam format PDF
