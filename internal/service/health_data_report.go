@@ -12,6 +12,53 @@ import (
 	"github.com/jung-kurt/gofpdf"
 )
 
+// UserProfileInfo berisi informasi profil user untuk laporan
+type UserProfileInfo struct {
+	Name   string
+	Age    *int
+	Height *int
+}
+
+// getUserProfileInfo mengambil informasi profil user untuk laporan
+func (s *HealthDataService) getUserProfileInfo(userID uint) (*UserProfileInfo, error) {
+	profile := &UserProfileInfo{
+		Name: "User", // Default name
+	}
+
+	// Ambil personal info untuk nama dan umur
+	personalInfo, err := s.personalInfoRepo.GetPersonalInfoByUserID(userID)
+	if err == nil && personalInfo != nil {
+		profile.Name = personalInfo.Name
+		
+		// Hitung umur dari birth_date
+		if personalInfo.BirthDate != nil {
+			age := s.calculateAge(*personalInfo.BirthDate)
+			profile.Age = &age
+		}
+	}
+
+	// Ambil tinggi badan dari health data terbaru
+	latestHealthData, err := s.healthDataRepo.GetLatestHealthDataByUserID(userID)
+	if err == nil && latestHealthData != nil && latestHealthData.HeightCM != nil {
+		profile.Height = latestHealthData.HeightCM
+	}
+
+	return profile, nil
+}
+
+// calculateAge menghitung umur dari tanggal lahir
+func (s *HealthDataService) calculateAge(birthDate time.Time) int {
+	now := time.Now()
+	age := now.Year() - birthDate.Year()
+
+	birthMonthDay := time.Date(now.Year(), birthDate.Month(), birthDate.Day(), 0, 0, 0, 0, now.Location())
+	if now.Before(birthMonthDay) {
+		age--
+	}
+
+	return age
+}
+
 // GenerateReportCSV menghasilkan laporan dalam format CSV
 func (s *HealthDataService) GenerateReportCSV(userID uint, req *request.HealthHistoryRequest) (*bytes.Buffer, string, error) {
 	// Ambil data riwayat kesehatan
@@ -19,6 +66,9 @@ func (s *HealthDataService) GenerateReportCSV(userID uint, req *request.HealthHi
 	if err != nil {
 		return nil, "", err
 	}
+
+	// Ambil data profil user
+	profileInfo, _ := s.getUserProfileInfo(userID)
 
 	// Buat buffer untuk CSV
 	var buf bytes.Buffer
@@ -28,6 +78,18 @@ func (s *HealthDataService) GenerateReportCSV(userID uint, req *request.HealthHi
 	startDate, endDate, _ := s.parseTimeRange(req)
 	timeRangeStr := fmt.Sprintf("%s_to_%s", startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
 	filename := fmt.Sprintf("riwayat_kesehatan_%s.csv", timeRangeStr)
+
+	// Informasi Profil User
+	writer.Write([]string{"=== INFORMASI PASIEN ==="})
+	writer.Write([]string{"Nama", profileInfo.Name})
+	if profileInfo.Age != nil {
+		writer.Write([]string{"Umur", fmt.Sprintf("%d tahun", *profileInfo.Age)})
+	}
+	if profileInfo.Height != nil {
+		writer.Write([]string{"Tinggi Badan", fmt.Sprintf("%d cm", *profileInfo.Height)})
+	}
+	writer.Write([]string{""})
+	writer.Write([]string{""})
 
 	// Header CSV
 	headers := []string{
@@ -125,13 +187,28 @@ func (s *HealthDataService) GenerateReportJSON(userID uint, req *request.HealthH
 		return nil, "", err
 	}
 
+	// Ambil data profil user
+	profileInfo, _ := s.getUserProfileInfo(userID)
+
 	// Tentukan rentang waktu untuk nama file
 	startDate, endDate, _ := s.parseTimeRange(req)
 	timeRangeStr := fmt.Sprintf("%s_to_%s", startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
 	filename := fmt.Sprintf("riwayat_kesehatan_%s.json", timeRangeStr)
 
+	// Buat struktur profil user untuk JSON
+	profileData := map[string]interface{}{
+		"nama": profileInfo.Name,
+	}
+	if profileInfo.Age != nil {
+		profileData["umur"] = fmt.Sprintf("%d tahun", *profileInfo.Age)
+	}
+	if profileInfo.Height != nil {
+		profileData["tinggi_badan"] = fmt.Sprintf("%d cm", *profileInfo.Height)
+	}
+
 	// Buat struktur laporan lengkap
 	report := map[string]interface{}{
+		"informasi_pasien": profileData,
 		"periode": map[string]interface{}{
 			"start_date": startDate.Format("2006-01-02"),
 			"end_date":   endDate.Format("2006-01-02"),
@@ -162,6 +239,9 @@ func (s *HealthDataService) GenerateReportPDF(userID uint, req *request.HealthHi
 	if err != nil {
 		return nil, "", err
 	}
+
+	// Ambil data profil user
+	profileInfo, _ := s.getUserProfileInfo(userID)
 
 	// Tentukan rentang waktu untuk nama file
 	startDate, endDate, _ := s.parseTimeRange(req)
@@ -357,6 +437,38 @@ func (s *HealthDataService) GenerateReportPDF(userID uint, req *request.HealthHi
 	pdf.SetDrawColor(0, 0, 0)
 	pdf.Line(20, 42, 190, 42)
 	pdf.Ln(15)
+
+	// ========== INFORMASI PASIEN ==========
+	pdf.SetFont("Arial", "B", 12)
+	pdf.SetTextColor(0, 0, 0)
+	pdf.Cell(170, 7, "Informasi Pasien")
+	pdf.Ln(10)
+
+	pdf.SetFont("Arial", "", 10)
+	// Nama
+	pdf.Cell(50, 7, "Nama:")
+	pdf.SetFont("Arial", "B", 10)
+	pdf.Cell(120, 7, profileInfo.Name)
+	pdf.Ln(7)
+
+	// Umur
+	if profileInfo.Age != nil {
+		pdf.SetFont("Arial", "", 10)
+		pdf.Cell(50, 7, "Umur:")
+		pdf.SetFont("Arial", "B", 10)
+		pdf.Cell(120, 7, fmt.Sprintf("%d tahun", *profileInfo.Age))
+		pdf.Ln(7)
+	}
+
+	// Tinggi Badan
+	if profileInfo.Height != nil {
+		pdf.SetFont("Arial", "", 10)
+		pdf.Cell(50, 7, "Tinggi Badan:")
+		pdf.SetFont("Arial", "B", 10)
+		pdf.Cell(120, 7, fmt.Sprintf("%d cm", *profileInfo.Height))
+		pdf.Ln(7)
+	}
+	pdf.Ln(8)
 
 	// Info identitas laporan
 	pdf.SetFont("Arial", "", 10)
