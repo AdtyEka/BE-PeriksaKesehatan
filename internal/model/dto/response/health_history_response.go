@@ -99,56 +99,116 @@ type TrendChartsResponse struct {
 
 // BloodPressureTrendCharts berisi data tren tekanan darah dengan filter waktu
 type BloodPressureTrendCharts struct {
-	Days7    []BloodPressureTrendPoint `json:"7Days"`    // Data 7 hari terakhir
-	Month1   []BloodPressureTrendPoint `json:"1Month"`   // Data 30 hari terakhir
-	Months3  []BloodPressureTrendPoint `json:"3Months"`  // Data 90 hari terakhir
+	Days7    []BloodPressureTrendPoint      `json:"7Days"`    // Data 7 hari terakhir (per hari)
+	Month1   []BloodPressureTrendPointWeek  `json:"1Month"`   // Data 30 hari terakhir (per minggu)
+	Months3  []BloodPressureTrendPointMonth `json:"3Months"`  // Data 90 hari terakhir (per bulan)
 }
 
 // BloodSugarTrendCharts berisi data tren gula darah dengan filter waktu
 type BloodSugarTrendCharts struct {
-	Days7    []BloodSugarTrendPoint `json:"7Days"`    // Data 7 hari terakhir
-	Month1   []BloodSugarTrendPoint `json:"1Month"`   // Data 30 hari terakhir
-	Months3  []BloodSugarTrendPoint `json:"3Months"`  // Data 90 hari terakhir
+	Days7    []BloodSugarTrendPoint      `json:"7Days"`    // Data 7 hari terakhir (per hari)
+	Month1   []BloodSugarTrendPointWeek  `json:"1Month"`   // Data 30 hari terakhir (per minggu)
+	Months3  []BloodSugarTrendPointMonth `json:"3Months"`  // Data 90 hari terakhir (per bulan)
 }
 
 // WeightTrendCharts berisi data tren berat badan dengan filter waktu
 type WeightTrendCharts struct {
-	Days7    []WeightTrendPoint `json:"7Days"`    // Data 7 hari terakhir
-	Month1   []WeightTrendPoint `json:"1Month"`   // Data 30 hari terakhir
-	Months3  []WeightTrendPoint `json:"3Months"`  // Data 90 hari terakhir
+	Days7    []WeightTrendPoint      `json:"7Days"`    // Data 7 hari terakhir (per hari)
+	Month1   []WeightTrendPointWeek  `json:"1Month"`   // Data 30 hari terakhir (per minggu)
+	Months3  []WeightTrendPointMonth `json:"3Months"`  // Data 90 hari terakhir (per bulan)
 }
 
 // ActivityTrendCharts berisi data tren aktivitas dengan filter waktu
 type ActivityTrendCharts struct {
-	Days7    []ActivityTrendPoint `json:"7Days"`    // Data 7 hari terakhir
-	Month1   []ActivityTrendPoint `json:"1Month"`   // Data 30 hari terakhir
-	Months3  []ActivityTrendPoint `json:"3Months"`  // Data 90 hari terakhir
+	Days7    []ActivityTrendPoint      `json:"7Days"`    // Data 7 hari terakhir (per hari)
+	Month1   []ActivityTrendPointWeek  `json:"1Month"`   // Data 30 hari terakhir (per minggu)
+	Months3  []ActivityTrendPointMonth `json:"3Months"`  // Data 90 hari terakhir (per bulan)
 }
 
-// BloodPressureTrendPoint satu titik data untuk grafik tekanan darah
+// BloodPressureTrendPoint satu titik data untuk grafik tekanan darah (7Days - per hari)
 type BloodPressureTrendPoint struct {
 	Date      string  `json:"date"`       // Tanggal (format: YYYY-MM-DD)
 	Systolic  float64 `json:"systolic"`   // Rata-rata systolic hari itu
 	Diastolic float64 `json:"diastolic"` // Rata-rata diastolic hari itu
 }
 
-// BloodSugarTrendPoint satu titik data untuk grafik gula darah
-type BloodSugarTrendPoint struct {
-	Date      string  `json:"date"`      // Tanggal (format: YYYY-MM-DD)
-	AvgValue  float64 `json:"avg_value"` // Rata-rata gula darah hari itu
+// BloodPressureTrendPointWeek satu titik data untuk grafik tekanan darah (1Month - per minggu)
+type BloodPressureTrendPointWeek struct {
+	Week      string  `json:"week"`       // Label minggu: "Week 1", "Week 2", dll
+	StartDate string  `json:"start_date"` // Tanggal mulai (format: YYYY-MM-DD)
+	EndDate   string  `json:"end_date"`   // Tanggal akhir (format: YYYY-MM-DD)
+	Systolic  float64 `json:"systolic"`   // Rata-rata systolic minggu itu
+	Diastolic float64 `json:"diastolic"` // Rata-rata diastolic minggu itu
 }
 
-// WeightTrendPoint satu titik data untuk grafik berat badan
+// BloodPressureTrendPointMonth satu titik data untuk grafik tekanan darah (3Months - per bulan)
+type BloodPressureTrendPointMonth struct {
+	Month     string  `json:"month"`     // Label bulan: "Dec 2025", "Jan 2026", dll
+	Systolic  float64 `json:"systolic"`   // Rata-rata systolic bulan itu
+	Diastolic float64 `json:"diastolic"` // Rata-rata diastolic bulan itu
+}
+
+// BloodSugarTrendPoint satu titik data untuk grafik gula darah (7Days - per hari)
+type BloodSugarTrendPoint struct {
+	Date     string  `json:"date"`      // Tanggal (format: YYYY-MM-DD)
+	AvgValue float64 `json:"avg_value"` // Rata-rata gula darah hari itu
+}
+
+// BloodSugarTrendPointWeek satu titik data untuk grafik gula darah (1Month - per minggu)
+type BloodSugarTrendPointWeek struct {
+	Week      string  `json:"week"`       // Label minggu: "Week 1", "Week 2", dll
+	StartDate string  `json:"start_date"` // Tanggal mulai (format: YYYY-MM-DD)
+	EndDate   string  `json:"end_date"`   // Tanggal akhir (format: YYYY-MM-DD)
+	AvgValue  float64 `json:"avg_value"`  // Rata-rata gula darah minggu itu
+}
+
+// BloodSugarTrendPointMonth satu titik data untuk grafik gula darah (3Months - per bulan)
+type BloodSugarTrendPointMonth struct {
+	Month    string  `json:"month"`     // Label bulan: "Dec 2025", "Jan 2026", dll
+	AvgValue float64 `json:"avg_value"` // Rata-rata gula darah bulan itu
+}
+
+// WeightTrendPoint satu titik data untuk grafik berat badan (7Days - per hari)
 type WeightTrendPoint struct {
 	Date   string  `json:"date"`   // Tanggal (format: YYYY-MM-DD)
 	Weight float64 `json:"weight"` // Rata-rata berat badan hari itu
 }
 
-// ActivityTrendPoint satu titik data untuk grafik aktivitas
+// WeightTrendPointWeek satu titik data untuk grafik berat badan (1Month - per minggu)
+type WeightTrendPointWeek struct {
+	Week      string  `json:"week"`       // Label minggu: "Week 1", "Week 2", dll
+	StartDate string  `json:"start_date"` // Tanggal mulai (format: YYYY-MM-DD)
+	EndDate   string  `json:"end_date"`   // Tanggal akhir (format: YYYY-MM-DD)
+	Weight    float64 `json:"weight"`     // Rata-rata berat badan minggu itu
+}
+
+// WeightTrendPointMonth satu titik data untuk grafik berat badan (3Months - per bulan)
+type WeightTrendPointMonth struct {
+	Month  string  `json:"month"`  // Label bulan: "Dec 2025", "Jan 2026", dll
+	Weight float64 `json:"weight"` // Rata-rata berat badan bulan itu
+}
+
+// ActivityTrendPoint satu titik data untuk grafik aktivitas (7Days - per hari)
 type ActivityTrendPoint struct {
 	Date     string  `json:"date"`      // Tanggal (format: YYYY-MM-DD)
 	Steps    int     `json:"steps"`     // Total langkah hari itu
 	Calories float64 `json:"calories"`  // Total kalori hari itu
+}
+
+// ActivityTrendPointWeek satu titik data untuk grafik aktivitas (1Month - per minggu)
+type ActivityTrendPointWeek struct {
+	Week      string  `json:"week"`       // Label minggu: "Week 1", "Week 2", dll
+	StartDate string  `json:"start_date"` // Tanggal mulai (format: YYYY-MM-DD)
+	EndDate   string  `json:"end_date"`   // Tanggal akhir (format: YYYY-MM-DD)
+	Steps     int     `json:"steps"`      // Total langkah minggu itu
+	Calories  float64 `json:"calories"`   // Total kalori minggu itu
+}
+
+// ActivityTrendPointMonth satu titik data untuk grafik aktivitas (3Months - per bulan)
+type ActivityTrendPointMonth struct {
+	Month    string  `json:"month"`    // Label bulan: "Dec 2025", "Jan 2026", dll
+	Steps    int     `json:"steps"`     // Total langkah bulan itu
+	Calories float64 `json:"calories"`  // Total kalori bulan itu
 }
 
 // ReadingHistoryResponse satu catatan pembacaan dalam riwayat
