@@ -115,8 +115,12 @@ func (r *HealthDataRepository) GetLatestHealthDataByUserID(userID uint) (*entity
 // Digunakan untuk daily record system (1 record per hari per user)
 func (r *HealthDataRepository) GetHealthDataByUserIDAndDate(userID uint, date time.Time) (*entity.HealthData, error) {
 	var healthData entity.HealthData
-	// Gunakan DATE() untuk membandingkan hanya bagian tanggal, bukan waktu
-	result := r.db.Where("user_id = ? AND DATE(record_date) = DATE(?)", userID, date).
+	// Normalisasi tanggal ke string format YYYY-MM-DD untuk perbandingan yang lebih reliable
+	// Karena record_date sudah disimpan sebagai 00:00:00, kita bisa langsung compare
+	dateStr := date.Format("2006-01-02")
+	
+	// Query dengan membandingkan record_date sebagai string
+	result := r.db.Where("user_id = ? AND DATE(record_date) = ?", userID, dateStr).
 		First(&healthData)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {

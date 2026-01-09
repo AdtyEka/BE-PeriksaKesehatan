@@ -48,7 +48,7 @@ func (s *HealthDataService) getUserProfileInfo(userID uint) (*UserProfileInfo, e
 
 // calculateAge menghitung umur dari tanggal lahir
 func (s *HealthDataService) calculateAge(birthDate time.Time) int {
-	now := time.Now()
+	now := s.getIndonesiaTime()
 	age := now.Year() - birthDate.Year()
 
 	birthMonthDay := time.Date(now.Year(), birthDate.Month(), birthDate.Day(), 0, 0, 0, 0, now.Location())
@@ -217,7 +217,7 @@ func (s *HealthDataService) GenerateReportJSON(userID uint, req *request.HealthH
 		"ringkasan_statistik": historyResp.Summary,
 		"grafik_tren":         historyResp.TrendCharts,
 		"catatan_pembacaan":   historyResp.ReadingHistory,
-		"generated_at":        time.Now().Format("2006-01-02 15:04:05"),
+		"generated_at":        s.getIndonesiaTime().Format("2006-01-02 15:04:05"),
 	}
 
 	// Marshal ke JSON dengan indent
@@ -484,7 +484,7 @@ func (s *HealthDataService) GenerateReportPDF(userID uint, req *request.HealthHi
 	pdf.SetFont("Arial", "", 10)
 	pdf.Cell(50, 7, "Tanggal Dibuat:")
 	pdf.SetFont("Arial", "B", 10)
-	pdf.Cell(120, 7, time.Now().Format("02 Januari 2006, 15:04:05 WIB"))
+	pdf.Cell(120, 7, s.getIndonesiaTime().Format("02 Januari 2006, 15:04:05 WIB"))
 	pdf.Ln(20)
 
 	// ========== RINGKASAN STATISTIK ==========

@@ -41,9 +41,9 @@ func (s *HealthDataService) calculateTrendCharts(data []entity.HealthData, metri
 // Menggunakan record_date sebagai acuan
 // days: jumlah hari total (contoh: 7 untuk 7Days = hari ini + 6 hari sebelumnya)
 func (s *HealthDataService) filterDataByTimeRange(data []entity.HealthData, days int) []entity.HealthData {
-	now := time.Now()
+	now := s.getIndonesiaTime()
 	// endDate adalah hari ini (untuk filter berdasarkan record_date, kita hanya perlu tanggal)
-	// Gunakan UTC untuk konsistensi timezone
+	// Gunakan timezone Indonesia untuk konsistensi
 	endDate := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
 	// days-1 karena hari ini sudah termasuk, jadi kita perlu mundur (days-1) hari
 	startDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -(days - 1))

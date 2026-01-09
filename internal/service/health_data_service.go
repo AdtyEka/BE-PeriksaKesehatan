@@ -25,9 +25,32 @@ func NewHealthDataService(healthDataRepo *repository.HealthDataRepository, perso
 	}
 }
 
+// getIndonesiaTime mengembalikan waktu saat ini dengan timezone Indonesia (WIB - Asia/Jakarta)
+func (s *HealthDataService) getIndonesiaTime() time.Time {
+	location, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		// Fallback jika gagal load timezone
+		location = time.FixedZone("WIB", 7*60*60) // UTC+7
+	}
+	return time.Now().In(location)
+}
+
+// convertToIndonesiaTime mengkonversi waktu ke timezone Indonesia (WIB - Asia/Jakarta)
+func (s *HealthDataService) convertToIndonesiaTime(t time.Time) time.Time {
+	location, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		// Fallback jika gagal load timezone
+		location = time.FixedZone("WIB", 7*60*60) // UTC+7
+	}
+	return t.In(location)
+}
+
 func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDataRequest) (*response.HealthDataResponse, error) {
-	// Ambil CURRENT_DATE (hari ini)
-	currentDate := time.Now()
+	// Ambil waktu sekarang dengan timezone Indonesia
+	now := s.getIndonesiaTime()
+	
+	// Normalisasi ke tanggal saja (00:00:00) untuk record_date
+	currentDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	
 	// Cari record dengan record_date = hari ini
 	existingData, err := s.healthDataRepo.GetHealthDataByUserIDAndDate(userID, currentDate)
@@ -64,13 +87,12 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 		// INSERT: Buat record baru untuk hari ini
 		// User boleh mengirim 1 field saja atau bahkan kosong (semua NULL)
 
-		// Set record_date = hari ini
-		// Set expired_at = hari ini 23:59:59
-		expiredAt := time.Date(currentDate.Year(), currentDate.Month(), currentDate.Day(), 23, 59, 59, 0, currentDate.Location())
+		// Set expired_at = hari ini 23:59:59 dengan timezone Indonesia
+		expiredAt := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
 
 		healthData = &entity.HealthData{
 			UserID:     userID,
-			RecordDate: currentDate,
+			RecordDate: currentDate, // Sudah dinormalisasi ke 00:00:00
 			ExpiredAt:  &expiredAt,
 		}
 
@@ -104,7 +126,9 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 // GetHealthDataByUserID mengembalikan 1 record health data untuk hari ini milik user
 // Menggunakan daily record system: mengembalikan record dengan record_date = CURRENT_DATE
 func (s *HealthDataService) GetHealthDataByUserID(userID uint) (*entity.HealthData, error) {
-	currentDate := time.Now()
+	now := s.getIndonesiaTime()
+	// Normalisasi ke tanggal saja (00:00:00)
+	currentDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	return s.healthDataRepo.GetHealthDataByUserIDAndDate(userID, currentDate)
 }
 

@@ -73,11 +73,24 @@ func openDatabaseConnection(dbURL string) (*gorm.DB, error) {
 	gormConfig := &gorm.Config{
 		PrepareStmt: false, // Disable prepared statements untuk Supabase compatibility
 		Logger:      logger.Default.LogMode(logger.Info),
+		NowFunc: func() time.Time {
+			// Gunakan waktu Indonesia (WIB) untuk semua operasi timestamp
+			loc, _ := time.LoadLocation("Asia/Jakarta")
+			return time.Now().In(loc)
+		},
 	}
 
 	db, err := gorm.Open(postgres.New(postgresConfig), gormConfig)
 	if err != nil {
 		return nil, err
+	}
+
+	// Set timezone untuk session database ke Asia/Jakarta
+	if err := db.Exec("SET TIME ZONE 'Asia/Jakarta'").Error; err != nil {
+		log.Printf("[DB] Warning: Gagal set timezone session: %v", err)
+		// Tidak return error, karena ini bukan critical
+	} else {
+		log.Println("[DB] Timezone session diset ke Asia/Jakarta")
 	}
 
 	return db, nil
@@ -129,6 +142,10 @@ func runMigrations(db *gorm.DB) error {
 
 	if err := migrateEducationalVideoCategoriesTable(db); err != nil {
 		migrationErrors = append(migrationErrors, fmt.Errorf("migrate educational_video_categories: %w", err))
+	}
+
+	if err := migrateTimestampToIndonesiaTimezone(db); err != nil {
+		migrationErrors = append(migrationErrors, fmt.Errorf("migrate timestamp to Indonesia timezone: %w", err))
 	}
 
 	if len(migrationErrors) > 0 {
@@ -519,6 +536,65 @@ func isColumnNotExistsError(err error) bool {
 	errMsg := strings.ToLower(err.Error())
 	return strings.Contains(errMsg, "does not exist") ||
 		strings.Contains(errMsg, "column") && strings.Contains(errMsg, "not found")
+}
+
+// migrateTimestampToIndonesiaTimezone mengatur timezone database ke Asia/Jakarta
+// untuk semua timestamp fields. Migration ini idempotent dan aman untuk Supabase/PostgreSQL.
+func migrateTimestampToIndonesiaTimezone(db *gorm.DB) error {
+	log.Println("[DB] Memulai migration timestamp ke timezone Indonesia...")
+
+	// Query semua kolom timestamp dalam satu query untuk efisiensi
+	var columns []struct {
+		TableName  string
+		ColumnName string
+		DataType   string
+	}
+
+	query := `
+		SELECT table_name, column_name, data_type 
+		FROM information_schema.columns 
+		WHERE table_schema = 'public' 
+		AND table_name IN ('users', 'health_data', 'blacklisted_tokens', 'health_alerts', 
+						   'categories', 'educational_videos', 'educational_video_categories',
+						   'health_targets', 'personal_infos')
+		AND data_type LIKE '%timestamp%'
+		ORDER BY table_name, column_name
+	`
+
+	if err := db.Raw(query).Scan(&columns).Error; err != nil {
+		log.Printf("[DB] Warning: Gagal query kolom timestamp: %v", err)
+		return nil // Tidak return error karena ini non-critical
+	}
+
+	// Process setiap kolom
+	for _, col := range columns {
+		// Skip jika sudah TIMESTAMPTZ
+		if col.DataType == "timestamp with time zone" {
+			continue
+		}
+
+		// Skip DATE columns
+		if col.DataType == "date" {
+			continue
+		}
+
+		// Convert TIMESTAMP ke TIMESTAMPTZ
+		if col.DataType == "timestamp without time zone" {
+			alterSQL := fmt.Sprintf(
+				"ALTER TABLE %s ALTER COLUMN %s TYPE TIMESTAMPTZ USING %s AT TIME ZONE 'UTC'",
+				col.TableName, col.ColumnName, col.ColumnName,
+			)
+
+			if err := db.Exec(alterSQL).Error; err != nil {
+				log.Printf("[DB] Warning: Gagal convert %s.%s: %v", col.TableName, col.ColumnName, err)
+			} else {
+				log.Printf("[DB] ✓ %s.%s -> TIMESTAMPTZ", col.TableName, col.ColumnName)
+			}
+		}
+	}
+
+	log.Println("[DB] Migration timestamp to Indonesia timezone selesai")
+	return nil
 }
 
 // runSeeds menjalankan semua database seeds
