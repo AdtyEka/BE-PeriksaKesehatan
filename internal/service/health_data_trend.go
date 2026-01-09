@@ -42,19 +42,20 @@ func (s *HealthDataService) calculateTrendCharts(data []entity.HealthData, metri
 // days: jumlah hari total (contoh: 7 untuk 7Days = hari ini + 6 hari sebelumnya)
 func (s *HealthDataService) filterDataByTimeRange(data []entity.HealthData, days int) []entity.HealthData {
 	now := time.Now()
-	endDate := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, now.Location())
+	// endDate adalah hari ini (untuk filter berdasarkan record_date, kita hanya perlu tanggal)
+	// Gunakan UTC untuk konsistensi timezone
+	endDate := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
 	// days-1 karena hari ini sudah termasuk, jadi kita perlu mundur (days-1) hari
-	startDate := endDate.AddDate(0, 0, -(days - 1))
+	startDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -(days - 1))
 
 	var filtered []entity.HealthData
 	for _, d := range data {
 		// Normalisasi record_date ke awal hari untuk perbandingan
 		recordDate := time.Date(d.RecordDate.Year(), d.RecordDate.Month(), d.RecordDate.Day(), 0, 0, 0, 0, d.RecordDate.Location())
-		startDateNormalized := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, startDate.Location())
-		endDateNormalized := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 0, 0, 0, 0, endDate.Location())
 
-		if (recordDate.Equal(startDateNormalized) || recordDate.After(startDateNormalized)) &&
-			(recordDate.Equal(endDateNormalized) || recordDate.Before(endDateNormalized)) {
+		// Filter: recordDate harus >= startDate dan <= endDate
+		// Gunakan perbandingan yang lebih inklusif untuk memastikan data hari ini masuk
+		if !recordDate.Before(startDate) && !recordDate.After(endDate) {
 			filtered = append(filtered, d)
 		}
 	}

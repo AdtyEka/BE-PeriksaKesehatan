@@ -58,9 +58,20 @@ func (r *HealthDataRepository) GetAllHealthData() ([]entity.HealthData, error) {
 
 func (r *HealthDataRepository) GetHealthDataByUserIDWithFilter(userID uint, startDate, endDate time.Time) ([]entity.HealthData, error) {
 	var healthDataList []entity.HealthData
+	// Normalisasi startDate dan endDate ke awal hari untuk perbandingan
+	startDateNormalized := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, startDate.Location())
+	endDateNormalized := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 0, 0, 0, 0, endDate.Location())
+	
+	// Format tanggal sebagai string untuk perbandingan yang lebih reliable
+	startDateStr := startDateNormalized.Format("2006-01-02")
+	endDateStr := endDateNormalized.Format("2006-01-02")
+	
+	// Filter berdasarkan record_date (bukan created_at) karena summary dan trend charts menggunakan record_date
+	// Gunakan DATE() untuk memastikan perbandingan hanya berdasarkan tanggal, bukan waktu
+	// Range inklusif: DATE(record_date) >= startDate AND DATE(record_date) <= endDate
 	query := r.db.Where("user_id = ?", userID).
-		Where("created_at >= ? AND created_at <= ?", startDate, endDate).
-		Order("created_at DESC")
+		Where("DATE(record_date) >= ? AND DATE(record_date) <= ?", startDateStr, endDateStr).
+		Order("record_date DESC, created_at DESC")
 	
 	result := query.Find(&healthDataList)
 	if result.Error != nil {
