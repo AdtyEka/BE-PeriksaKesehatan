@@ -33,6 +33,11 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 		return nil, err
 	}
 
+	// Validasi field yang dikirim (hanya sekali untuk INSERT dan UPDATE)
+	if err := s.validateHealthDataFields(req); err != nil {
+		return nil, err
+	}
+
 	var healthData *entity.HealthData
 
 	if existingData != nil {
@@ -40,64 +45,8 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 		// Field yang tidak dikirim (nil) TIDAK DIUBAH
 		healthData = existingData
 
-		// Validasi field yang dikirim (jika ada)
-		if req.Systolic != nil || req.Diastolic != nil {
-			if (req.Systolic != nil && req.Diastolic == nil) ||
-				(req.Systolic == nil && req.Diastolic != nil) {
-				return nil, errors.New("systolic dan diastolic harus dikirim bersamaan")
-			}
-			if req.Systolic != nil && req.Diastolic != nil {
-				if err := utils.ValidateNullableInt(req.Systolic, "systolic", 0, 180); err != nil {
-					return nil, err
-				}
-				if err := utils.ValidateNullableInt(req.Diastolic, "diastolic", 0, 120); err != nil {
-					return nil, err
-				}
-			}
-		}
-		if req.BloodSugar != nil {
-			if err := utils.ValidateNullableInt(req.BloodSugar, "blood_sugar", 0, 300); err != nil {
-				return nil, err
-			}
-		}
-		if req.Weight != nil {
-			if err := utils.ValidateNullableFloat64(req.Weight, "weight", 20.0, 200.0); err != nil {
-				return nil, err
-			}
-		}
-		if req.Height != nil {
-			if err := utils.ValidateNullableInt(req.Height, "height", 50, 250); err != nil {
-				return nil, err
-			}
-		}
-		if req.HeartRate != nil {
-			if err := utils.ValidateNullableInt(req.HeartRate, "heart_rate", 0, 180); err != nil {
-				return nil, err
-			}
-		}
-
 		// Update hanya field yang dikirim (tidak nil)
-		if req.Systolic != nil {
-			healthData.Systolic = req.Systolic
-		}
-		if req.Diastolic != nil {
-			healthData.Diastolic = req.Diastolic
-		}
-		if req.BloodSugar != nil {
-			healthData.BloodSugar = req.BloodSugar
-		}
-		if req.Weight != nil {
-			healthData.Weight = req.Weight
-		}
-		if req.Height != nil {
-			healthData.HeightCM = req.Height
-		}
-		if req.HeartRate != nil {
-			healthData.HeartRate = req.HeartRate
-		}
-		if req.Activity != nil {
-			healthData.Activity = req.Activity
-		}
+		s.updateHealthDataFields(healthData, req)
 
 		// Lakukan update (partial update - hanya field yang tidak nil)
 		if err := s.healthDataRepo.UpdateHealthData(healthData); err != nil {
@@ -112,41 +61,6 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 	} else {
 		// INSERT: Buat record baru untuk hari ini
 		// User boleh mengirim 1 field saja atau bahkan kosong (semua NULL)
-		// Validasi hanya untuk field yang dikirim (jika ada)
-		if req.Systolic != nil || req.Diastolic != nil {
-			if (req.Systolic != nil && req.Diastolic == nil) ||
-				(req.Systolic == nil && req.Diastolic != nil) {
-				return nil, errors.New("systolic dan diastolic harus dikirim bersamaan")
-			}
-			if req.Systolic != nil && req.Diastolic != nil {
-				if err := utils.ValidateNullableInt(req.Systolic, "systolic", 0, 180); err != nil {
-					return nil, err
-				}
-				if err := utils.ValidateNullableInt(req.Diastolic, "diastolic", 0, 120); err != nil {
-					return nil, err
-				}
-			}
-		}
-		if req.BloodSugar != nil {
-			if err := utils.ValidateNullableInt(req.BloodSugar, "blood_sugar", 0, 300); err != nil {
-				return nil, err
-			}
-		}
-		if req.Weight != nil {
-			if err := utils.ValidateNullableFloat64(req.Weight, "weight", 20.0, 200.0); err != nil {
-				return nil, err
-			}
-		}
-		if req.Height != nil {
-			if err := utils.ValidateNullableInt(req.Height, "height", 50, 250); err != nil {
-				return nil, err
-			}
-		}
-		if req.HeartRate != nil {
-			if err := utils.ValidateNullableInt(req.HeartRate, "heart_rate", 0, 180); err != nil {
-				return nil, err
-			}
-		}
 
 		// Set record_date = hari ini
 		// Set expired_at = hari ini 23:59:59
@@ -159,27 +73,7 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 		}
 
 		// Set field yang dikirim (field yang tidak dikirim tetap NULL)
-		if req.Systolic != nil {
-			healthData.Systolic = req.Systolic
-		}
-		if req.Diastolic != nil {
-			healthData.Diastolic = req.Diastolic
-		}
-		if req.BloodSugar != nil {
-			healthData.BloodSugar = req.BloodSugar
-		}
-		if req.Weight != nil {
-			healthData.Weight = req.Weight
-		}
-		if req.Height != nil {
-			healthData.HeightCM = req.Height
-		}
-		if req.HeartRate != nil {
-			healthData.HeartRate = req.HeartRate
-		}
-		if req.Activity != nil {
-			healthData.Activity = req.Activity
-		}
+		s.updateHealthDataFields(healthData, req)
 
 		if err := s.healthDataRepo.CreateHealthData(healthData); err != nil {
 			return nil, err
@@ -210,4 +104,74 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 func (s *HealthDataService) GetHealthDataByUserID(userID uint) (*entity.HealthData, error) {
 	currentDate := time.Now()
 	return s.healthDataRepo.GetHealthDataByUserIDAndDate(userID, currentDate)
+}
+
+// validateHealthDataFields melakukan validasi field health data yang dikirim
+// Digunakan untuk menghindari duplikasi validasi antara INSERT dan UPDATE
+func (s *HealthDataService) validateHealthDataFields(req *request.HealthDataRequest) error {
+	// Validasi systolic dan diastolic harus bersamaan
+	if req.Systolic != nil || req.Diastolic != nil {
+		if (req.Systolic != nil && req.Diastolic == nil) ||
+			(req.Systolic == nil && req.Diastolic != nil) {
+			return errors.New("systolic dan diastolic harus dikirim bersamaan")
+		}
+		if req.Systolic != nil && req.Diastolic != nil {
+			if err := utils.ValidateNullableInt(req.Systolic, "systolic", 0, 180); err != nil {
+				return err
+			}
+			if err := utils.ValidateNullableInt(req.Diastolic, "diastolic", 0, 120); err != nil {
+				return err
+			}
+		}
+	}
+	
+	// Validasi field lainnya
+	if req.BloodSugar != nil {
+		if err := utils.ValidateNullableInt(req.BloodSugar, "blood_sugar", 0, 300); err != nil {
+			return err
+		}
+	}
+	if req.Weight != nil {
+		if err := utils.ValidateNullableFloat64(req.Weight, "weight", 20.0, 200.0); err != nil {
+			return err
+		}
+	}
+	if req.Height != nil {
+		if err := utils.ValidateNullableInt(req.Height, "height", 50, 250); err != nil {
+			return err
+		}
+	}
+	if req.HeartRate != nil {
+		if err := utils.ValidateNullableInt(req.HeartRate, "heart_rate", 0, 180); err != nil {
+			return err
+		}
+	}
+	
+	return nil
+}
+
+// updateHealthDataFields mengupdate field health data dari request
+// Hanya field yang tidak nil yang akan diupdate
+func (s *HealthDataService) updateHealthDataFields(healthData *entity.HealthData, req *request.HealthDataRequest) {
+	if req.Systolic != nil {
+		healthData.Systolic = req.Systolic
+	}
+	if req.Diastolic != nil {
+		healthData.Diastolic = req.Diastolic
+	}
+	if req.BloodSugar != nil {
+		healthData.BloodSugar = req.BloodSugar
+	}
+	if req.Weight != nil {
+		healthData.Weight = req.Weight
+	}
+	if req.Height != nil {
+		healthData.HeightCM = req.Height
+	}
+	if req.HeartRate != nil {
+		healthData.HeartRate = req.HeartRate
+	}
+	if req.Activity != nil {
+		healthData.Activity = req.Activity
+	}
 }

@@ -27,14 +27,9 @@ func NewEducationalVideoService(educationalVideoRepo *repository.EducationalVide
 
 // AddEducationalVideo menambahkan video edukasi baru dengan multiple categories
 func (s *EducationalVideoService) AddEducationalVideo(req *request.EducationalVideoRequest) (*response.AddEducationalVideoResponse, error) {
-	// Validasi
+	// Validasi (sudah termasuk validasi category_ids)
 	if err := s.validateVideoRequest(req); err != nil {
 		return nil, err
-	}
-
-	// Validasi category_ids tidak kosong
-	if len(req.CategoryIDs) == 0 {
-		return nil, errors.New("category_ids tidak boleh kosong")
 	}
 
 	// Validasi semua kategori exists
@@ -146,9 +141,6 @@ func (s *EducationalVideoService) GetEducationalVideosByCategoryID(categoryIDStr
 	// Ambil kategori
 	category, err := s.categoryRepo.GetCategoryByID(uint(categoryID))
 	if err != nil {
-		if err.Error() == "kategori tidak ditemukan" {
-			return nil, err
-		}
 		return nil, err
 	}
 

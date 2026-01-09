@@ -56,6 +56,10 @@ func (s *ProfileService) GetProfile(userID uint) (*response.ProfileResponse, err
 		}
 	}
 
+	// Helper untuk default value
+	defaultWeight := 0.0
+	defaultHeight := 0
+
 	resp := &response.ProfileResponse{
 		Name:     user.Nama,
 		Email:    user.Email,
@@ -63,28 +67,17 @@ func (s *ProfileService) GetProfile(userID uint) (*response.ProfileResponse, err
 		Age:      age,
 	}
 
-	// Set weight dan height dari health_data jika ada
-	if latestHealthData != nil {
-		if latestHealthData.Weight != nil {
-			resp.Weight = latestHealthData.Weight
-		} else {
-			// Default 0 jika tidak ada
-			zeroWeight := 0.0
-			resp.Weight = &zeroWeight
-		}
-		if latestHealthData.HeightCM != nil {
-			resp.Height = latestHealthData.HeightCM
-		} else {
-			// Default 0 jika tidak ada
-			zeroHeight := 0
-			resp.Height = &zeroHeight
-		}
+	// Set weight dan height dari health_data jika ada, atau gunakan default
+	if latestHealthData != nil && latestHealthData.Weight != nil {
+		resp.Weight = latestHealthData.Weight
 	} else {
-		// Default 0 jika tidak ada health_data
-		zeroWeight := 0.0
-		zeroHeight := 0
-		resp.Weight = &zeroWeight
-		resp.Height = &zeroHeight
+		resp.Weight = &defaultWeight
+	}
+
+	if latestHealthData != nil && latestHealthData.HeightCM != nil {
+		resp.Height = latestHealthData.HeightCM
+	} else {
+		resp.Height = &defaultHeight
 	}
 
 	return resp, nil
@@ -193,11 +186,6 @@ func (s *ProfileService) UpdateProfileWithMultipart(userID uint, req *request.Up
 		}
 	}
 
-	// Validasi bahwa ada data untuk diupdate
-	if len(userUpdates) == 0 && len(personalInfoUpdates) == 0 {
-		return errors.New("tidak ada data untuk diupdate")
-	}
-
 	return nil
 }
 
@@ -289,7 +277,7 @@ func (s *ProfileService) UpdatePersonalInfo(userID uint, req *request.UpdatePers
 		updates["address"] = *req.Address
 	}
 
-	// Jika tidak ada field yang akan diupdate, return nil (no-op, tidak error)
+	// Jika tidak ada field yang akan diupdate, return tanpa error (no-op)
 	if len(updates) == 0 {
 		return nil
 	}
@@ -355,7 +343,7 @@ func (s *ProfileService) UpdatePersonalInfoWithPhoto(userID uint, req *request.U
 		updates["photo_url"] = *req.PhotoURL
 	}
 
-	// Jika tidak ada field yang akan diupdate, return nil (no-op, tidak error)
+	// Jika tidak ada field yang akan diupdate, return tanpa error (no-op)
 	if len(updates) == 0 {
 		return nil
 	}
@@ -617,8 +605,9 @@ func (s *ProfileService) UpdateSettings(userID uint, req *request.UpdateSettings
 		updates["language"] = *req.Language
 	}
 
+	// Jika tidak ada data untuk diupdate, return tanpa error (no-op)
 	if len(updates) == 0 {
-		return errors.New("tidak ada data untuk diupdate")
+		return nil
 	}
 
 	return s.userRepo.UpdateUserSettings(userID, updates)

@@ -111,7 +111,7 @@ func (s *HealthAlertService) CheckHealthAlerts(userID uint) (*response.CheckHeal
 
 // evaluateBloodPressure mengevaluasi tekanan darah dan mengembalikan alert jika tidak normal
 func (s *HealthAlertService) evaluateBloodPressure(systolic, diastolic int, recordedAt time.Time) *response.HealthAlertResponse {
-	status := s.getBloodPressureStatus(systolic, diastolic)
+	status := getBloodPressureStatusValue(systolic, diastolic)
 	if status == StatusNormal {
 		return nil
 	}
@@ -183,7 +183,7 @@ func (s *HealthAlertService) evaluateBloodPressure(systolic, diastolic int, reco
 
 // evaluateBloodSugar mengevaluasi gula darah dan mengembalikan alert jika tidak normal
 func (s *HealthAlertService) evaluateBloodSugar(bloodSugar int, recordedAt time.Time) *response.HealthAlertResponse {
-	status := s.getBloodSugarStatus(bloodSugar)
+	status := getBloodSugarStatusValue(bloodSugar)
 	if status == StatusNormal {
 		return nil
 	}
@@ -256,7 +256,7 @@ func (s *HealthAlertService) evaluateBloodSugar(bloodSugar int, recordedAt time.
 
 // evaluateHeartRate mengevaluasi detak jantung dan mengembalikan alert jika tidak normal
 func (s *HealthAlertService) evaluateHeartRate(heartRate int, recordedAt time.Time) *response.HealthAlertResponse {
-	status := s.getHeartRateStatus(heartRate)
+	status := getHeartRateStatusValue(heartRate)
 	if status == StatusNormal {
 		return nil
 	}
@@ -405,50 +405,6 @@ func (s *HealthAlertService) evaluateBMI(weightKg float64, heightCM int, recorde
 		ManagementTips:   managementTips,
 		EducationVideos:  []response.EducationVideoItem{}, // Akan diisi di CheckHealthAlerts
 	}
-}
-
-// getBloodPressureStatus menentukan status tekanan darah berdasarkan kombinasi sistolik dan diastolik (WHO)
-// RENDAH jika sistolik < 90 atau diastolik < 60
-// NORMAL jika sistolik 90–139 dan diastolik 60–89
-// TINGGI jika sistolik ≥ 140 atau diastolik ≥ 90
-func (s *HealthAlertService) getBloodPressureStatus(systolic, diastolic int) string {
-	if systolic < 90 || diastolic < 60 {
-		return StatusRendah
-	}
-	if systolic >= 140 || diastolic >= 90 {
-		return StatusTinggi
-	}
-	if systolic >= 90 && systolic <= 139 && diastolic >= 60 && diastolic <= 89 {
-		return StatusNormal
-	}
-	// Fallback untuk kasus edge case
-	return StatusNormal
-}
-
-// getBloodSugarStatus menentukan status gula darah sewaktu (WHO)
-// RENDAH jika < 70 mg/dL
-// NORMAL jika 70–140 mg/dL
-// TINGGI jika > 140 mg/dL
-func (s *HealthAlertService) getBloodSugarStatus(bloodSugar int) string {
-	if bloodSugar < 70 {
-		return StatusRendah
-	}
-	if bloodSugar > 140 {
-		return StatusTinggi
-	}
-	return StatusNormal
-}
-
-// getHeartRateStatus menentukan status detak jantung
-// Menggunakan logika yang sama untuk konsistensi
-func (s *HealthAlertService) getHeartRateStatus(heartRate int) string {
-	if heartRate >= 60 && heartRate <= 100 {
-		return StatusNormal
-	}
-	if heartRate < 60 {
-		return StatusRendah
-	}
-	return StatusTinggi
 }
 
 // getCategoryIDByCategory mengembalikan category_id berdasarkan kategori alert
