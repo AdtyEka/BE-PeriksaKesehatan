@@ -22,7 +22,7 @@ func (s *HealthDataService) GetHealthHistory(userID uint, req *request.HealthHis
 	}
 
 	// Ambil data 90 hari untuk trend charts (agar bisa menampilkan 7Days, 1Month, 3Months)
-	now := s.getIndonesiaTime()
+	now := time.Now()
 	trendEndDate := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
 	trendStartDate := trendEndDate.AddDate(0, 0, -89) // 90 hari termasuk hari ini
 	trendDataList, err := s.healthDataRepo.GetHealthDataByUserIDWithFilter(userID, trendStartDate, trendEndDate)
@@ -55,7 +55,7 @@ func (s *HealthDataService) GetHealthHistory(userID uint, req *request.HealthHis
 
 // parseTimeRange mengkonversi time_range ke startDate dan endDate
 func (s *HealthDataService) parseTimeRange(req *request.HealthHistoryRequest) (time.Time, time.Time, error) {
-	now := s.getIndonesiaTime()
+	now := time.Now()
 	// endDate adalah hari ini (akhir hari untuk memastikan semua data hari ini termasuk)
 	endDate := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
 	var startDate time.Time
