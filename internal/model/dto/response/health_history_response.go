@@ -13,6 +13,8 @@ type HealthHistoryResponse struct {
 // Struktur ini digunakan khusus untuk response API agar sesuai kebutuhan frontend:
 // {
 //   "summary": {
+//     "start_date": "2025-01-01",
+//     "end_date": "2025-01-31",
 //     "7Days": { ... },
 //     "1Month": { ... },
 //     "3Months": { ... }
@@ -20,23 +22,46 @@ type HealthHistoryResponse struct {
 //   ...
 // }
 type HealthHistorySummaryByRange struct {
-	Days7   *HealthSummaryResponse `json:"7Days,omitempty"`   // Ringkasan untuk 7 hari terakhir
-	Month1  *HealthSummaryResponse `json:"1Month,omitempty"`  // Ringkasan untuk 30 hari terakhir
-	Months3 *HealthSummaryResponse `json:"3Months,omitempty"` // Ringkasan untuk 3 bulan terakhir
+	StartDate string                    `json:"start_date"` // Tanggal mulai global (format: YYYY-MM-DD)
+	EndDate   string                    `json:"end_date"`   // Tanggal akhir global (format: YYYY-MM-DD)
+	Days7     *HealthSummaryResponse    `json:"7Days,omitempty"`   // Ringkasan untuk 7 hari terakhir
+	Month1    *HealthSummaryWithWeeks   `json:"1Month,omitempty"`  // Ringkasan untuk 30 hari terakhir (dengan weeks)
+	Months3   *HealthSummaryWithWeeks   `json:"3Months,omitempty"` // Ringkasan untuk 3 bulan terakhir (dengan weeks)
+}
+
+// HealthSummaryWithWeeks berisi ringkasan statistik dengan agregasi per minggu
+type HealthSummaryWithWeeks struct {
+	HealthSummaryResponse
+	Weeks []HealthSummaryWeek `json:"weeks"` // Agregasi per minggu
+}
+
+// HealthSummaryWeek berisi ringkasan statistik untuk satu minggu
+type HealthSummaryWeek struct {
+	Week      string                `json:"week"`       // Label minggu: "Week 1", "Week 2", dll
+	StartDate string                `json:"start_date"` // Tanggal mulai minggu (format: YYYY-MM-DD)
+	EndDate   string                `json:"end_date"`   // Tanggal akhir minggu (format: YYYY-MM-DD)
+	Summary   HealthSummaryResponse `json:"summary"`    // Ringkasan statistik untuk minggu tersebut
 }
 
 // HealthReadingHistoryByRange membungkus riwayat pembacaan per rentang waktu
 // {
 //   "reading_history": {
 //     "7Days": [ ... ],
-//     "1Month": [ ... ],
-//     "3Months": [ ... ]
+//     "1Month": { "start_date": "...", "end_date": "...", "records": [ ... ] },
+//     "3Months": { "start_date": "...", "end_date": "...", "records": [ ... ] }
 //   }
 // }
 type HealthReadingHistoryByRange struct {
-	Days7   []ReadingHistoryResponse `json:"7Days,omitempty"`   // Riwayat untuk 7 hari terakhir
-	Month1  []ReadingHistoryResponse `json:"1Month,omitempty"`  // Riwayat untuk 30 hari terakhir
-	Months3 []ReadingHistoryResponse `json:"3Months,omitempty"` // Riwayat untuk 3 bulan terakhir
+	Days7   []ReadingHistoryResponse        `json:"7Days,omitempty"`   // Riwayat untuk 7 hari terakhir
+	Month1  *ReadingHistoryGrouped          `json:"1Month,omitempty"`  // Riwayat untuk 30 hari terakhir (dengan grouping)
+	Months3 *ReadingHistoryGrouped          `json:"3Months,omitempty"` // Riwayat untuk 3 bulan terakhir (dengan grouping)
+}
+
+// ReadingHistoryGrouped berisi riwayat pembacaan dengan informasi tanggal
+type ReadingHistoryGrouped struct {
+	StartDate string                  `json:"start_date"` // Tanggal mulai (format: YYYY-MM-DD)
+	EndDate   string                  `json:"end_date"`   // Tanggal akhir (format: YYYY-MM-DD)
+	Records   []ReadingHistoryResponse `json:"records"`    // Catatan pembacaan
 }
 
 // HealthHistoryAPIResponse adalah bentuk response yang dikirimkan ke client

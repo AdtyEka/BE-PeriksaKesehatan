@@ -132,6 +132,7 @@ func (h *HealthDataHandler) GetHealthHistory(c *gin.Context) {
 	}
 
 	// Panggil service untuk mendapatkan riwayat kesehatan (struktur internal)
+	// Ini digunakan untuk mendapatkan TrendCharts yang sudah dihitung
 	resp, err := h.healthDataService.GetHealthHistory(userID, &req)
 	if err != nil {
 		if err.Error() == "start_date dan end_date wajib diisi untuk custom range" {
@@ -142,39 +143,30 @@ func (h *HealthDataHandler) GetHealthHistory(c *gin.Context) {
 		return
 	}
 
-	// Mapping ke struktur response API:
-	// summary dan reading_history dibungkus per rentang waktu (7Days, 1Month, 3Months)
-
-	apiResp := response.HealthHistoryAPIResponse{
-		TrendCharts: resp.TrendCharts, // Tetap sama seperti sebelumnya
+	// Mapping ke struktur response API baru menggunakan mapping layer
+	// Mapping layer akan mengambil data untuk semua periode (7Days, 1Month, 3Months)
+	// dan melakukan transform tanpa mengubah logic perhitungan
+	apiResp, err := h.healthDataService.MapHealthHistoryToAPIResponse(userID, &req, resp)
+	if err != nil {
+		utils.InternalServerError(c, "Gagal memproses data riwayat kesehatan", err.Error())
+		return
 	}
 
-	// Tentukan ke bucket mana summary & reading_history dimasukkan
-	timeRange := strings.ToLower(req.TimeRange)
-	if timeRange == "" {
-		timeRange = "7days"
-	}
-
-	switch timeRange {
-	case "30days":
-		// Masukkan ke 1Month
-		apiResp.Summary.Month1 = &resp.Summary
-		apiResp.ReadingHistory.Month1 = resp.ReadingHistory
-	case "3months":
-		// Masukkan ke 3Months
-		apiResp.Summary.Months3 = &resp.Summary
-		apiResp.ReadingHistory.Months3 = resp.ReadingHistory
-	default:
-		// Default: 7days
-		apiResp.Summary.Days7 = &resp.Summary
-		apiResp.ReadingHistory.Days7 = resp.ReadingHistory
-	}
-
-	// Response sukses dengan bentuk JSON:
+	// Response sukses dengan bentuk JSON baru:
 	// {
-	//   "summary": { "7Days": {...} / "1Month": {...} / "3Months": {...} },
+	//   "summary": {
+	//     "start_date": "2025-01-01",
+	//     "end_date": "2025-01-31",
+	//     "7Days": { ... },
+	//     "1Month": { ..., "weeks": [ ... ] },
+	//     "3Months": { ..., "weeks": [ ... ] }
+	//   },
 	//   "trend_charts": { ... (tetap sama) ... },
-	//   "reading_history": { "7Days": [...], "1Month": [...], "3Months": [...] }
+	//   "reading_history": {
+	//     "7Days": [ ... ],
+	//     "1Month": { "start_date": "...", "end_date": "...", "records": [ ... ] },
+	//     "3Months": { "start_date": "...", "end_date": "...", "records": [ ... ] }
+	//   }
 	// }
 	utils.SuccessResponse(c, http.StatusOK, "Riwayat kesehatan berhasil diambil", apiResp)
 }
