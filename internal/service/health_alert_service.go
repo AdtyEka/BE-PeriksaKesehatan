@@ -96,13 +96,22 @@ func (s *HealthAlertService) CheckHealthAlerts(userID uint) (*response.CheckHeal
 		}
 	}
 
-	// Loop setiap alert yang sudah terbentuk dan isi education_videos
-	// Hanya untuk alert dengan status RENDAH atau TINGGI
+	// Batch query education videos untuk semua kategori yang memerlukan (status RENDAH atau TINGGI)
+	// Kumpulkan kategori unik terlebih dahulu
+	categorySet := make(map[string]bool)
 	for i := range alerts {
 		if alerts[i].Status == StatusRendah || alerts[i].Status == StatusTinggi {
-			// Ambil video edukasi berdasarkan kategori alert
-			videos := s.getEducationVideosByCategory(alerts[i].Category)
-			alerts[i].EducationVideos = videos
+			categorySet[alerts[i].Category] = true
+		}
+	}
+
+	// Batch query semua video untuk kategori yang diperlukan
+	videosByCategory := s.getEducationVideosByCategories(categorySet)
+
+	// Isi education_videos untuk setiap alert
+	for i := range alerts {
+		if alerts[i].Status == StatusRendah || alerts[i].Status == StatusTinggi {
+			alerts[i].EducationVideos = videosByCategory[alerts[i].Category]
 		}
 	}
 
@@ -247,7 +256,7 @@ func (s *HealthAlertService) evaluateBloodSugar(bloodSugar int, recordedAt time.
 		Value:            value,
 		Label:            label,
 		Status:           status,
-		RecordedAt:       recordedAt,
+		RecordedAt:       timezoneUtils.ToJakarta(recordedAt),
 		Explanation:      explanation,
 		ImmediateActions: immediateActions,
 		MedicalAttention: medicalAttention,
@@ -322,7 +331,7 @@ func (s *HealthAlertService) evaluateHeartRate(heartRate int, recordedAt time.Ti
 		Value:            value,
 		Label:            label,
 		Status:           status,
-		RecordedAt:       recordedAt,
+		RecordedAt:       timezoneUtils.ToJakarta(recordedAt),
 		Explanation:      explanation,
 		ImmediateActions: immediateActions,
 		MedicalAttention: medicalAttention,
@@ -400,7 +409,7 @@ func (s *HealthAlertService) evaluateBMI(weightKg float64, heightCM int, recorde
 		Value:            value,
 		Label:            label,
 		Status:           status,
-		RecordedAt:       recordedAt,
+		RecordedAt:       timezoneUtils.ToJakarta(recordedAt),
 		Explanation:      explanation,
 		ImmediateActions: immediateActions,
 		MedicalAttention: medicalAttention,
@@ -425,8 +434,66 @@ func (s *HealthAlertService) getCategoryIDByCategory(category string) (uint, boo
 	}
 }
 
-// getEducationVideosByCategory mengambil video edukasi berdasarkan kategori alert
+// getEducationVideosByCategories mengambil video edukasi untuk multiple kategori sekaligus (batch query)
+// Mengembalikan map category -> []EducationVideoItem untuk menghindari N+1 query
+func (s *HealthAlertService) getEducationVideosByCategories(categorySet map[string]bool) map[string][]response.EducationVideoItem {
+	result := make(map[string][]response.EducationVideoItem)
+
+	// Kumpulkan category IDs yang valid
+	var categoryIDs []uint
+	categoryToID := make(map[string]uint)
+	for category := range categorySet {
+		categoryID, ok := s.getCategoryIDByCategory(category)
+		if ok {
+			categoryIDs = append(categoryIDs, categoryID)
+			categoryToID[category] = categoryID
+		} else {
+			// Jika kategori tidak dikenal, set empty array
+			result[category] = []response.EducationVideoItem{}
+		}
+	}
+
+	// Jika tidak ada category ID yang valid, return empty map
+	if len(categoryIDs) == 0 {
+		return result
+	}
+
+	// Batch query semua video untuk semua kategori sekaligus
+	videosByCategoryID, err := s.educationalVideoRepo.GetAllEducationalVideosByCategoryIDs(categoryIDs)
+	if err != nil {
+		// Jika error, return empty arrays untuk semua kategori
+		for category := range categorySet {
+			result[category] = []response.EducationVideoItem{}
+		}
+		return result
+	}
+
+	// Convert ke response format dan map berdasarkan category string
+	for category, categoryID := range categoryToID {
+		videos, exists := videosByCategoryID[categoryID]
+		if !exists || len(videos) == 0 {
+			result[category] = []response.EducationVideoItem{}
+			continue
+		}
+
+		items := make([]response.EducationVideoItem, 0, len(videos))
+		for _, video := range videos {
+			items = append(items, response.EducationVideoItem{
+				ID:         video.ID,
+				VideoTitle: video.VideoTitle,
+				VideoURL:   video.VideoURL,
+				CategoryID: categoryID,
+			})
+		}
+		result[category] = items
+	}
+
+	return result
+}
+
+// getEducationVideosByCategory mengambil video edukasi berdasarkan kategori alert (single category)
 // Menggunakan category_id untuk mengambil video dari API education
+// NOTE: Untuk multiple categories, gunakan getEducationVideosByCategories untuk menghindari N+1 query
 func (s *HealthAlertService) getEducationVideosByCategory(category string) []response.EducationVideoItem {
 	// Map kategori ke category_id
 	categoryID, ok := s.getCategoryIDByCategory(category)

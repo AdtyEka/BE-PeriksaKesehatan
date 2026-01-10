@@ -19,6 +19,32 @@ const (
 	UploadDir = "uploads/profile"
 )
 
+var (
+	allowedImageTypes = []string{"image/jpeg", "image/jpg", "image/png", "image/webp"}
+	allowedExts       = []string{".jpg", ".jpeg", ".png", ".webp"}
+)
+
+// isAllowedImageType mengecek apakah content type diizinkan
+func isAllowedImageType(contentType string) bool {
+	for _, allowedType := range allowedImageTypes {
+		if contentType == allowedType {
+			return true
+		}
+	}
+	return false
+}
+
+// isAllowedExt mengecek apakah ekstensi file diizinkan
+func isAllowedExt(ext string) bool {
+	extLower := strings.ToLower(ext)
+	for _, allowedExt := range allowedExts {
+		if extLower == allowedExt {
+			return true
+		}
+	}
+	return false
+}
+
 // ValidateImageFile memvalidasi file image yang diupload
 // Returns: error jika file tidak valid, nil jika valid
 func ValidateImageFile(fileHeader *multipart.FileHeader) error {
@@ -33,34 +59,13 @@ func ValidateImageFile(fileHeader *multipart.FileHeader) error {
 
 	// Validasi tipe file
 	contentType := fileHeader.Header.Get("Content-Type")
-	allowedTypes := []string{"image/jpeg", "image/jpg", "image/png", "image/webp"}
-	
-	isAllowed := false
-	for _, allowedType := range allowedTypes {
-		if contentType == allowedType {
-			isAllowed = true
-			break
-		}
-	}
-
-	if !isAllowed {
+	if !isAllowedImageType(contentType) {
 		return fmt.Errorf("tipe file tidak didukung, hanya jpg, jpeg, png, dan webp yang diizinkan")
 	}
 
 	// Validasi ekstensi file
-	filename := fileHeader.Filename
-	ext := strings.ToLower(filepath.Ext(filename))
-	allowedExts := []string{".jpg", ".jpeg", ".png", ".webp"}
-	
-	isExtAllowed := false
-	for _, allowedExt := range allowedExts {
-		if ext == allowedExt {
-			isExtAllowed = true
-			break
-		}
-	}
-
-	if !isExtAllowed {
+	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+	if !isAllowedExt(ext) {
 		return fmt.Errorf("ekstensi file tidak didukung, hanya .jpg, .jpeg, .png, dan .webp yang diizinkan")
 	}
 
@@ -95,13 +100,9 @@ func UploadProfileImage(fileHeader *multipart.FileHeader, userID uint) (string, 
 	// Sanitize filename untuk mencegah path traversal
 	originalExt := strings.ToLower(filepath.Ext(fileHeader.Filename))
 	// Validasi ekstensi sudah dilakukan di ValidateImageFile, tapi double check
-	allowedExts := []string{".jpg", ".jpeg", ".png", ".webp"}
 	ext := ".png" // default
-	for _, allowedExt := range allowedExts {
-		if originalExt == allowedExt {
-			ext = originalExt
-			break
-		}
+	if isAllowedExt(originalExt) {
+		ext = originalExt
 	}
 	
 	timestamp := NowInJakarta().Unix()

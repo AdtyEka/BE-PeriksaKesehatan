@@ -106,40 +106,9 @@ func (s *ProfileService) UpdateProfileWithMultipart(userID uint, req *request.Up
 	}
 
 	// Update personal info (birth_date, phone, address, photo_url)
-	personalInfoUpdates := make(map[string]interface{})
-	
-	// Update birth_date jika dikirim
-	if req.BirthDate != nil && *req.BirthDate != "" {
-		birthDate, err := time.Parse("2006-01-02", *req.BirthDate)
-		if err != nil {
-			return errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
-		}
-		// Konversi ke timezone Asia/Jakarta
-		birthDateJakarta := timezoneUtils.ToJakarta(birthDate)
-
-		if birthDateJakarta.After(timezoneUtils.NowInJakarta()) {
-			return errors.New("tanggal lahir tidak boleh di masa depan")
-		}
-
-		personalInfoUpdates["birth_date"] = birthDateJakarta
-	}
-
-	// Update phone jika dikirim
-	if req.Phone != nil && *req.Phone != "" {
-		personalInfoUpdates["phone"] = *req.Phone
-	}
-
-	// Update address jika dikirim
-	if req.Address != nil && *req.Address != "" {
-		personalInfoUpdates["address"] = *req.Address
-	}
-
-	// Update photoURL jika ada file baru yang diupload atau URL yang dikirim
-	if photoURL != nil {
-		personalInfoUpdates["photo_url"] = *photoURL
-	} else if req.PhotoURL != nil && *req.PhotoURL != "" {
-		// Jika tidak ada file upload tapi ada photo_url di form
-		personalInfoUpdates["photo_url"] = *req.PhotoURL
+	personalInfoUpdates, err := buildPersonalInfoUpdatesFromRequest(req, photoURL)
+	if err != nil {
+		return err
 	}
 
 	// Update personal info jika ada perubahan
@@ -250,37 +219,9 @@ func (s *ProfileService) UpdatePersonalInfo(userID uint, req *request.UpdatePers
 		return errors.New("personal info tidak ditemukan, silakan buat terlebih dahulu")
 	}
 
-	updates := make(map[string]interface{})
-
-	// Update name jika dikirim
-	if req.Name != nil && *req.Name != "" {
-		updates["name"] = *req.Name
-	}
-
-	// Update birth_date jika dikirim
-	if req.BirthDate != nil && *req.BirthDate != "" {
-		birthDate, err := time.Parse("2006-01-02", *req.BirthDate)
-		if err != nil {
-			return errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
-		}
-		// Konversi ke timezone Asia/Jakarta
-		birthDateJakarta := timezoneUtils.ToJakarta(birthDate)
-
-		if birthDateJakarta.After(timezoneUtils.NowInJakarta()) {
-			return errors.New("tanggal lahir tidak boleh di masa depan")
-		}
-
-		updates["birth_date"] = birthDateJakarta
-	}
-
-	// Update phone jika dikirim
-	if req.Phone != nil && *req.Phone != "" {
-		updates["phone"] = *req.Phone
-	}
-
-	// Update address jika dikirim
-	if req.Address != nil && *req.Address != "" {
-		updates["address"] = *req.Address
+	updates, err := buildPersonalInfoUpdatesFromRequest(req, nil)
+	if err != nil {
+		return err
 	}
 
 	// Jika tidak ada field yang akan diupdate, return tanpa error (no-op)
@@ -310,45 +251,9 @@ func (s *ProfileService) UpdatePersonalInfoWithPhoto(userID uint, req *request.U
 		return errors.New("personal info tidak ditemukan, silakan buat terlebih dahulu")
 	}
 
-	updates := make(map[string]interface{})
-
-	// Update name jika dikirim
-	if req.Name != nil && *req.Name != "" {
-		updates["name"] = *req.Name
-	}
-
-	// Update birth_date jika dikirim
-	if req.BirthDate != nil && *req.BirthDate != "" {
-		birthDate, err := time.Parse("2006-01-02", *req.BirthDate)
-		if err != nil {
-			return errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
-		}
-		// Konversi ke timezone Asia/Jakarta
-		birthDateJakarta := timezoneUtils.ToJakarta(birthDate)
-
-		if birthDateJakarta.After(timezoneUtils.NowInJakarta()) {
-			return errors.New("tanggal lahir tidak boleh di masa depan")
-		}
-
-		updates["birth_date"] = birthDateJakarta
-	}
-
-	// Update phone jika dikirim
-	if req.Phone != nil && *req.Phone != "" {
-		updates["phone"] = *req.Phone
-	}
-
-	// Update address jika dikirim
-	if req.Address != nil && *req.Address != "" {
-		updates["address"] = *req.Address
-	}
-
-	// Update photoURL jika ada file baru yang diupload atau URL yang dikirim
-	if photoURL != nil {
-		updates["photo_url"] = *photoURL
-	} else if req.PhotoURL != nil && *req.PhotoURL != "" {
-		// Jika tidak ada file upload tapi ada photo_url di form
-		updates["photo_url"] = *req.PhotoURL
+	updates, err := buildPersonalInfoUpdatesFromRequest(req, photoURL)
+	if err != nil {
+		return err
 	}
 
 	// Jika tidak ada field yang akan diupdate, return tanpa error (no-op)
@@ -621,6 +526,66 @@ func (s *ProfileService) UpdateSettings(userID uint, req *request.UpdateSettings
 	}
 
 	return s.userRepo.UpdateUserSettings(userID, updates)
+}
+
+// parseAndValidateBirthDate memparse dan memvalidasi birth_date dari string
+func parseAndValidateBirthDate(birthDateStr string) (time.Time, error) {
+	birthDate, err := time.Parse("2006-01-02", birthDateStr)
+	if err != nil {
+		return time.Time{}, errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
+	}
+	birthDateJakarta := timezoneUtils.ToJakarta(birthDate)
+	if birthDateJakarta.After(timezoneUtils.NowInJakarta()) {
+		return time.Time{}, errors.New("tanggal lahir tidak boleh di masa depan")
+	}
+	return birthDateJakarta, nil
+}
+
+// buildPersonalInfoUpdatesFromRequest membangun map updates untuk personal info dari request
+// photoURL adalah path file yang sudah diupload (jika ada)
+func buildPersonalInfoUpdatesFromRequest(req interface{}, photoURL *string) (map[string]interface{}, error) {
+	updates := make(map[string]interface{})
+
+	switch r := req.(type) {
+	case *request.UpdateProfileMultipartRequest:
+		if r.BirthDate != nil && *r.BirthDate != "" {
+			birthDate, err := parseAndValidateBirthDate(*r.BirthDate)
+			if err != nil {
+				return nil, err
+			}
+			updates["birth_date"] = birthDate
+		}
+		if r.Phone != nil && *r.Phone != "" {
+			updates["phone"] = *r.Phone
+		}
+		if r.Address != nil && *r.Address != "" {
+			updates["address"] = *r.Address
+		}
+		if photoURL != nil {
+			updates["photo_url"] = *photoURL
+		} else if r.PhotoURL != nil && *r.PhotoURL != "" {
+			updates["photo_url"] = *r.PhotoURL
+		}
+	case *request.UpdatePersonalInfoRequest:
+		if r.Name != nil && *r.Name != "" {
+			updates["name"] = *r.Name
+		}
+		if r.BirthDate != nil && *r.BirthDate != "" {
+			birthDate, err := parseAndValidateBirthDate(*r.BirthDate)
+			if err != nil {
+				return nil, err
+			}
+			updates["birth_date"] = birthDate
+		}
+		if r.Phone != nil && *r.Phone != "" {
+			updates["phone"] = *r.Phone
+		}
+		if r.Address != nil && *r.Address != "" {
+			updates["address"] = *r.Address
+		}
+	}
+
+	return updates, nil
 }
 
 func (s *ProfileService) calculateAge(birthDate time.Time) int {
