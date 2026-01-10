@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+	timezoneUtils "BE-PeriksaKesehatan/pkg/utils"
 )
 
 type AuthHandler struct {
@@ -121,12 +122,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	now := timezoneUtils.NowInJakarta()
 	claims := jwt.MapClaims{
 		"sub":   user.ID,
 		"email": user.Email,
 		"name":  user.Nama,
-		"exp":   time.Now().Add(24 * time.Hour).Unix(),
-		"iat":   time.Now().Unix(),
+		"exp":   now.Add(24 * time.Hour).Unix(),
+		"iat":   now.Unix(),
 	}
 
 	tokenObj := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -217,9 +219,11 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	var expiresAt time.Time
 	if exp, ok := claims["exp"].(float64); ok {
 		expiresAt = time.Unix(int64(exp), 0)
+		// Konversi ke timezone Asia/Jakarta
+		expiresAt = timezoneUtils.ToJakarta(expiresAt)
 	} else {
 		// Default 24 jam jika tidak ada exp
-		expiresAt = time.Now().Add(24 * time.Hour)
+		expiresAt = timezoneUtils.NowInJakarta().Add(24 * time.Hour)
 	}
 
 	// Blacklist token

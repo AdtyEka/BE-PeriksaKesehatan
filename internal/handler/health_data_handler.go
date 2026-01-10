@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	timezoneUtils "BE-PeriksaKesehatan/pkg/utils"
 )
 
 // HealthDataHandler menangani semua request terkait data kesehatan
@@ -100,7 +101,7 @@ func (h *HealthDataHandler) GetHealthDataByUserID(c *gin.Context) {
 		Height:     healthData.HeightCM,
 		HeartRate:  healthData.HeartRate,
 		Activity:   healthData.Activity,
-		CreatedAt:  healthData.CreatedAt,
+		CreatedAt:  timezoneUtils.ToJakarta(healthData.CreatedAt),
 	}
 
 	// Response sukses

@@ -4,10 +4,10 @@ import (
 	"BE-PeriksaKesehatan/internal/repository"
 	"BE-PeriksaKesehatan/pkg/utils"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	timezoneUtils "BE-PeriksaKesehatan/pkg/utils"
 )
 
 const UserIDKey = "userID"
@@ -73,7 +73,7 @@ func AuthMiddleware(authRepo *repository.AuthRepository, jwtSecret string) gin.H
 
 		// Validasi expiry time
 		if exp, ok := claims["exp"].(float64); ok {
-			if int64(exp) < time.Now().Unix() {
+			if int64(exp) < timezoneUtils.NowInJakarta().Unix() {
 				utils.Unauthorized(c, "Token tidak valid atau sudah expired")
 				c.Abort()
 				return

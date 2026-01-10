@@ -5,6 +5,8 @@ import (
 	"BE-PeriksaKesehatan/internal/model/entity"
 	"sort"
 	"time"
+
+	timezoneUtils "BE-PeriksaKesehatan/pkg/utils"
 )
 
 // calculateSummary menghitung ringkasan statistik berbasis perubahan harian
@@ -81,7 +83,8 @@ func (s *HealthDataService) calculateBloodPressureSummary(data []entity.HealthDa
 
 	for _, d := range data {
 		if d.Systolic != nil && d.Diastolic != nil {
-			day := time.Date(d.RecordDate.Year(), d.RecordDate.Month(), d.RecordDate.Day(), 0, 0, 0, 0, d.RecordDate.Location())
+			recordDateJakarta := timezoneUtils.ToJakarta(d.RecordDate)
+			day := timezoneUtils.DateInJakarta(recordDateJakarta.Year(), recordDateJakarta.Month(), recordDateJakarta.Day(), 0, 0, 0, 0)
 			if _, ok := dailyMap[day]; !ok {
 				dailyMap[day] = &agg{}
 				dates = append(dates, day)
@@ -168,7 +171,8 @@ func (s *HealthDataService) calculateBloodSugarSummary(data []entity.HealthData)
 
 	for _, d := range data {
 		if d.BloodSugar != nil {
-			day := time.Date(d.RecordDate.Year(), d.RecordDate.Month(), d.RecordDate.Day(), 0, 0, 0, 0, d.RecordDate.Location())
+			recordDateJakarta := timezoneUtils.ToJakarta(d.RecordDate)
+			day := timezoneUtils.DateInJakarta(recordDateJakarta.Year(), recordDateJakarta.Month(), recordDateJakarta.Day(), 0, 0, 0, 0)
 			if _, ok := dailyMap[day]; !ok {
 				dailyMap[day] = &agg{}
 				dates = append(dates, day)
@@ -239,7 +243,8 @@ func (s *HealthDataService) calculateWeightSummary(data []entity.HealthData) *re
 
 	for _, d := range data {
 		if d.Weight != nil {
-			day := time.Date(d.RecordDate.Year(), d.RecordDate.Month(), d.RecordDate.Day(), 0, 0, 0, 0, d.RecordDate.Location())
+			recordDateJakarta := timezoneUtils.ToJakarta(d.RecordDate)
+			day := timezoneUtils.DateInJakarta(recordDateJakarta.Year(), recordDateJakarta.Month(), recordDateJakarta.Day(), 0, 0, 0, 0)
 			if _, ok := dailyMap[day]; !ok {
 				dailyMap[day] = &agg{}
 				dates = append(dates, day)
@@ -348,7 +353,8 @@ func (s *HealthDataService) calculateActivitySummary(data []entity.HealthData) *
 
 	for _, d := range data {
 		if d.Activity != nil && *d.Activity != "" {
-			day := time.Date(d.RecordDate.Year(), d.RecordDate.Month(), d.RecordDate.Day(), 0, 0, 0, 0, d.RecordDate.Location())
+			recordDateJakarta := timezoneUtils.ToJakarta(d.RecordDate)
+			day := timezoneUtils.DateInJakarta(recordDateJakarta.Year(), recordDateJakarta.Month(), recordDateJakarta.Day(), 0, 0, 0, 0)
 			if _, ok := dailyMap[day]; !ok {
 				dailyMap[day] = &agg{}
 				dates = append(dates, day)

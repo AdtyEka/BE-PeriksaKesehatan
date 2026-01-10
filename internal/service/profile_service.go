@@ -8,6 +8,8 @@ import (
 	"errors"
 	"math"
 	"time"
+
+	timezoneUtils "BE-PeriksaKesehatan/pkg/utils"
 )
 
 type ProfileService struct {
@@ -112,12 +114,14 @@ func (s *ProfileService) UpdateProfileWithMultipart(userID uint, req *request.Up
 		if err != nil {
 			return errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
 		}
+		// Konversi ke timezone Asia/Jakarta
+		birthDateJakarta := timezoneUtils.ToJakarta(birthDate)
 
-		if birthDate.After(time.Now()) {
+		if birthDateJakarta.After(timezoneUtils.NowInJakarta()) {
 			return errors.New("tanggal lahir tidak boleh di masa depan")
 		}
 
-		personalInfoUpdates["birth_date"] = birthDate
+		personalInfoUpdates["birth_date"] = birthDateJakarta
 	}
 
 	// Update phone jika dikirim
@@ -259,12 +263,14 @@ func (s *ProfileService) UpdatePersonalInfo(userID uint, req *request.UpdatePers
 		if err != nil {
 			return errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
 		}
+		// Konversi ke timezone Asia/Jakarta
+		birthDateJakarta := timezoneUtils.ToJakarta(birthDate)
 
-		if birthDate.After(time.Now()) {
+		if birthDateJakarta.After(timezoneUtils.NowInJakarta()) {
 			return errors.New("tanggal lahir tidak boleh di masa depan")
 		}
 
-		updates["birth_date"] = birthDate
+		updates["birth_date"] = birthDateJakarta
 	}
 
 	// Update phone jika dikirim
@@ -317,12 +323,14 @@ func (s *ProfileService) UpdatePersonalInfoWithPhoto(userID uint, req *request.U
 		if err != nil {
 			return errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
 		}
+		// Konversi ke timezone Asia/Jakarta
+		birthDateJakarta := timezoneUtils.ToJakarta(birthDate)
 
-		if birthDate.After(time.Now()) {
+		if birthDateJakarta.After(timezoneUtils.NowInJakarta()) {
 			return errors.New("tanggal lahir tidak boleh di masa depan")
 		}
 
-		updates["birth_date"] = birthDate
+		updates["birth_date"] = birthDateJakarta
 	}
 
 	// Update phone jika dikirim
@@ -387,13 +395,15 @@ func (s *ProfileService) CreatePersonalInfo(userID uint, req *request.CreatePers
 		if err != nil {
 			return nil, errors.New("format tanggal lahir tidak valid, gunakan format YYYY-MM-DD")
 		}
+		// Konversi ke timezone Asia/Jakarta
+		parsedDateJakarta := timezoneUtils.ToJakarta(parsedDate)
 
 		// Validasi birth_date tidak boleh di masa depan
-		if parsedDate.After(time.Now()) {
+		if parsedDateJakarta.After(timezoneUtils.NowInJakarta()) {
 			return nil, errors.New("tanggal lahir tidak boleh di masa depan")
 		}
 
-		birthDate = &parsedDate
+		birthDate = &parsedDateJakarta
 	}
 
 	// Validasi phone jika dikirim: numeric dan panjang 10-15 digit
@@ -614,10 +624,11 @@ func (s *ProfileService) UpdateSettings(userID uint, req *request.UpdateSettings
 }
 
 func (s *ProfileService) calculateAge(birthDate time.Time) int {
-	now := time.Now()
-	age := now.Year() - birthDate.Year()
+	now := timezoneUtils.NowInJakarta()
+	birthDateJakarta := timezoneUtils.ToJakarta(birthDate)
+	age := now.Year() - birthDateJakarta.Year()
 
-	birthMonthDay := time.Date(now.Year(), birthDate.Month(), birthDate.Day(), 0, 0, 0, 0, now.Location())
+	birthMonthDay := timezoneUtils.DateInJakarta(now.Year(), birthDateJakarta.Month(), birthDateJakarta.Day(), 0, 0, 0, 0)
 	if now.Before(birthMonthDay) {
 		age--
 	}

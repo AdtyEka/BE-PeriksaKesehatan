@@ -6,6 +6,8 @@ import (
 	"BE-PeriksaKesehatan/internal/model/entity"
 	"errors"
 	"time"
+
+	timezoneUtils "BE-PeriksaKesehatan/pkg/utils"
 )
 
 func (s *HealthDataService) GetHealthHistory(userID uint, req *request.HealthHistoryRequest) (*response.HealthHistoryResponse, error) {
@@ -22,8 +24,8 @@ func (s *HealthDataService) GetHealthHistory(userID uint, req *request.HealthHis
 	}
 
 	// Ambil data 90 hari untuk trend charts (agar bisa menampilkan 7Days, 1Month, 3Months)
-	now := time.Now()
-	trendEndDate := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+	now := timezoneUtils.NowInJakarta()
+	trendEndDate := timezoneUtils.DateInJakarta(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0)
 	trendStartDate := trendEndDate.AddDate(0, 0, -89) // 90 hari termasuk hari ini
 	trendDataList, err := s.healthDataRepo.GetHealthDataByUserIDWithFilter(userID, trendStartDate, trendEndDate)
 	if err != nil {
@@ -55,9 +57,9 @@ func (s *HealthDataService) GetHealthHistory(userID uint, req *request.HealthHis
 
 // parseTimeRange mengkonversi time_range ke startDate dan endDate
 func (s *HealthDataService) parseTimeRange(req *request.HealthHistoryRequest) (time.Time, time.Time, error) {
-	now := time.Now()
+	now := timezoneUtils.NowInJakarta()
 	// endDate adalah hari ini (akhir hari untuk memastikan semua data hari ini termasuk)
-	endDate := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+	endDate := timezoneUtils.DateInJakarta(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0)
 	var startDate time.Time
 
 	// Jika custom range, gunakan StartDate dan EndDate
@@ -65,19 +67,22 @@ func (s *HealthDataService) parseTimeRange(req *request.HealthHistoryRequest) (t
 		if req.StartDate == nil || req.EndDate == nil {
 			return time.Time{}, time.Time{}, errors.New("start_date dan end_date wajib diisi untuk custom range")
 		}
-		startDate = time.Date(req.StartDate.Year(), req.StartDate.Month(), req.StartDate.Day(), 0, 0, 0, 0, req.StartDate.Location())
-		endDate = time.Date(req.EndDate.Year(), req.EndDate.Month(), req.EndDate.Day(), 23, 59, 59, 0, req.EndDate.Location())
+		// Konversi StartDate dan EndDate ke timezone Asia/Jakarta
+		startDateJakarta := timezoneUtils.ToJakarta(*req.StartDate)
+		endDateJakarta := timezoneUtils.ToJakarta(*req.EndDate)
+		startDate = timezoneUtils.DateInJakarta(startDateJakarta.Year(), startDateJakarta.Month(), startDateJakarta.Day(), 0, 0, 0, 0)
+		endDate = timezoneUtils.DateInJakarta(endDateJakarta.Year(), endDateJakarta.Month(), endDateJakarta.Day(), 23, 59, 59, 0)
 	} else {
 		// Default atau time range yang sudah ditentukan
 		// Untuk 7days: ambil 7 hari terakhir termasuk hari ini (hari ini + 6 hari sebelumnya)
 		// Untuk 30days: ambil 30 hari terakhir termasuk hari ini (hari ini + 29 hari sebelumnya)
 		switch req.TimeRange {
 		case "30days":
-			startDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -29) // 30 hari termasuk hari ini
+			startDate = timezoneUtils.DateInJakarta(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0).AddDate(0, 0, -29) // 30 hari termasuk hari ini
 		case "3months":
-			startDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, -3, 0)
+			startDate = timezoneUtils.DateInJakarta(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0).AddDate(0, -3, 0)
 		default: // "7days" atau kosong
-			startDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -6) // 7 hari termasuk hari ini
+			startDate = timezoneUtils.DateInJakarta(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0).AddDate(0, 0, -6) // 7 hari termasuk hari ini
 		}
 	}
 

@@ -5,6 +5,8 @@ import (
 	"BE-PeriksaKesehatan/internal/model/entity"
 	"fmt"
 	"sort"
+
+	timezoneUtils "BE-PeriksaKesehatan/pkg/utils"
 )
 
 // buildReadingHistory membangun catatan pembacaan kronologis dengan nullable-aware
@@ -19,13 +21,13 @@ func (s *HealthDataService) buildReadingHistory(data []entity.HealthData) []resp
 		return sortedData[i].CreatedAt.After(sortedData[j].CreatedAt)
 	})
 
-	for _, d := range sortedData {
+		for _, d := range sortedData {
 		if d.Systolic != nil && d.Diastolic != nil {
 			systolic := *d.Systolic
 			diastolic := *d.Diastolic
 			history = append(history, response.ReadingHistoryResponse{
 				ID:         d.ID,
-				DateTime:   d.CreatedAt,
+				DateTime:   timezoneUtils.ToJakarta(d.CreatedAt),
 				MetricType: "tekanan_darah",
 				Value:      fmt.Sprintf("%d/%d mmHg", systolic, diastolic),
 				Context:    nil,
@@ -39,7 +41,7 @@ func (s *HealthDataService) buildReadingHistory(data []entity.HealthData) []resp
 			bloodSugar := *d.BloodSugar
 			history = append(history, response.ReadingHistoryResponse{
 				ID:         d.ID,
-				DateTime:   d.CreatedAt,
+				DateTime:   timezoneUtils.ToJakarta(d.CreatedAt),
 				MetricType: "gula_darah",
 				Value:      fmt.Sprintf("%d mg/dL", bloodSugar),
 				Context:    nil,
@@ -56,7 +58,7 @@ func (s *HealthDataService) buildReadingHistory(data []entity.HealthData) []resp
 			bmiStatus := s.getBMIStatus(bmi)
 			history = append(history, response.ReadingHistoryResponse{
 				ID:         d.ID,
-				DateTime:   d.CreatedAt,
+				DateTime:   timezoneUtils.ToJakarta(d.CreatedAt),
 				MetricType: "berat_badan",
 				Value:      fmt.Sprintf("%.2f kg (BMI: %.2f)", weight, roundTo2Decimals(bmi)),
 				Context:    nil,
@@ -68,7 +70,7 @@ func (s *HealthDataService) buildReadingHistory(data []entity.HealthData) []resp
 			weight := *d.Weight
 			history = append(history, response.ReadingHistoryResponse{
 				ID:         d.ID,
-				DateTime:   d.CreatedAt,
+				DateTime:   timezoneUtils.ToJakarta(d.CreatedAt),
 				MetricType: "berat_badan",
 				Value:      fmt.Sprintf("%.2f kg", weight),
 				Context:    nil,
@@ -82,7 +84,7 @@ func (s *HealthDataService) buildReadingHistory(data []entity.HealthData) []resp
 			heartRate := *d.HeartRate
 			history = append(history, response.ReadingHistoryResponse{
 				ID:         d.ID,
-				DateTime:   d.CreatedAt,
+				DateTime:   timezoneUtils.ToJakarta(d.CreatedAt),
 				MetricType: "detak_jantung",
 				Value:      fmt.Sprintf("%d bpm", heartRate),
 				Context:    nil,
@@ -95,7 +97,7 @@ func (s *HealthDataService) buildReadingHistory(data []entity.HealthData) []resp
 		if d.Activity != nil && *d.Activity != "" {
 			history = append(history, response.ReadingHistoryResponse{
 				ID:         d.ID,
-				DateTime:   d.CreatedAt,
+				DateTime:   timezoneUtils.ToJakarta(d.CreatedAt),
 				MetricType: "aktivitas",
 				Value:      *d.Activity,
 				Context:    nil,

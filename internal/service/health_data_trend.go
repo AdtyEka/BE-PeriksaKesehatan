@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	timezoneUtils "BE-PeriksaKesehatan/pkg/utils"
 )
 
 // calculateTrendCharts menghitung data untuk grafik tren dengan filter waktu
@@ -43,17 +45,18 @@ func (s *HealthDataService) calculateTrendCharts(data []entity.HealthData, metri
 // Menggunakan record_date sebagai acuan
 // days: jumlah hari total (contoh: 7 untuk 7Days = hari ini + 6 hari sebelumnya)
 func (s *HealthDataService) filterDataByTimeRange(data []entity.HealthData, days int) []entity.HealthData {
-	now := time.Now()
+	now := timezoneUtils.NowInJakarta()
 	// endDate adalah hari ini (untuk filter berdasarkan record_date, kita hanya perlu tanggal)
-	// Gunakan UTC untuk konsistensi timezone
-	endDate := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+	// Gunakan timezone Asia/Jakarta untuk konsistensi
+	endDate := timezoneUtils.DateInJakarta(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0)
 	// days-1 karena hari ini sudah termasuk, jadi kita perlu mundur (days-1) hari
-	startDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -(days - 1))
+	startDate := timezoneUtils.DateInJakarta(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0).AddDate(0, 0, -(days - 1))
 
 	var filtered []entity.HealthData
 	for _, d := range data {
-		// Normalisasi record_date ke awal hari untuk perbandingan
-		recordDate := time.Date(d.RecordDate.Year(), d.RecordDate.Month(), d.RecordDate.Day(), 0, 0, 0, 0, d.RecordDate.Location())
+		// Normalisasi record_date ke awal hari untuk perbandingan (konversi ke timezone Asia/Jakarta)
+		recordDateJakarta := timezoneUtils.ToJakarta(d.RecordDate)
+		recordDate := timezoneUtils.DateInJakarta(recordDateJakarta.Year(), recordDateJakarta.Month(), recordDateJakarta.Day(), 0, 0, 0, 0)
 
 		// Filter: recordDate harus >= startDate dan <= endDate
 		// Gunakan perbandingan yang lebih inklusif untuk memastikan data hari ini masuk
@@ -149,8 +152,8 @@ func (s *HealthDataService) buildBloodPressureTrendPointsWeek(data []entity.Heal
 
 	// Cari tanggal terawal untuk menghitung week number
 	// Week 1 adalah minggu pertama dalam range 30 hari terakhir
-	now := time.Now()
-	rangeStartDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -29)
+	now := timezoneUtils.NowInJakarta()
+	rangeStartDate := timezoneUtils.DateInJakarta(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0).AddDate(0, 0, -29)
 
 	// Group by week (minggu dimulai dari Senin)
 	weekMap := make(map[string][]entity.HealthData)
@@ -320,8 +323,8 @@ func (s *HealthDataService) buildBloodSugarTrendPointsWeek(data []entity.HealthD
 	}
 
 	// Cari tanggal terawal untuk menghitung week number
-	now := time.Now()
-	rangeStartDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -29)
+	now := timezoneUtils.NowInJakarta()
+	rangeStartDate := timezoneUtils.DateInJakarta(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0).AddDate(0, 0, -29)
 
 	// Group by week
 	weekMap := make(map[string][]entity.HealthData)
@@ -487,8 +490,8 @@ func (s *HealthDataService) buildWeightTrendPointsWeek(data []entity.HealthData)
 	}
 
 	// Cari tanggal terawal untuk menghitung week number
-	now := time.Now()
-	rangeStartDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -29)
+	now := timezoneUtils.NowInJakarta()
+	rangeStartDate := timezoneUtils.DateInJakarta(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0).AddDate(0, 0, -29)
 
 	// Group by week
 	weekMap := make(map[string][]entity.HealthData)
@@ -652,8 +655,8 @@ func (s *HealthDataService) buildActivityTrendPointsWeek(data []entity.HealthDat
 	}
 
 	// Cari tanggal terawal untuk menghitung week number
-	now := time.Now()
-	rangeStartDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -29)
+	now := timezoneUtils.NowInJakarta()
+	rangeStartDate := timezoneUtils.DateInJakarta(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0).AddDate(0, 0, -29)
 
 	// Group by week
 	weekMap := make(map[string][]entity.HealthData)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	timezoneUtils "BE-PeriksaKesehatan/pkg/utils"
 )
 
 type AuthRepository struct {
@@ -62,7 +63,7 @@ func (r *AuthRepository) IsTokenBlacklisted(token string) (bool, error) {
 // CleanupExpiredTokens menghapus token yang sudah kadaluarsa dari blacklist.
 // Bisa dipanggil secara berkala untuk membersihkan database.
 func (r *AuthRepository) CleanupExpiredTokens() error {
-	now := time.Now()
+	now := timezoneUtils.NowInJakarta()
 	result := r.db.Where("expires_at < ?", now).Delete(&entity.BlacklistedToken{})
 	if result.Error != nil {
 		return result.Error

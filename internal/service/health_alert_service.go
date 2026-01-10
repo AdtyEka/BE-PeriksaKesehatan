@@ -5,6 +5,8 @@ import (
 	"BE-PeriksaKesehatan/internal/repository"
 	"fmt"
 	"time"
+
+	timezoneUtils "BE-PeriksaKesehatan/pkg/utils"
 )
 
 // Kategori konstan
@@ -172,7 +174,7 @@ func (s *HealthAlertService) evaluateBloodPressure(systolic, diastolic int, reco
 		Value:            value,
 		Label:            label,
 		Status:           status,
-		RecordedAt:       recordedAt,
+		RecordedAt:       timezoneUtils.ToJakarta(recordedAt),
 		Explanation:      explanation,
 		ImmediateActions: immediateActions,
 		MedicalAttention: medicalAttention,

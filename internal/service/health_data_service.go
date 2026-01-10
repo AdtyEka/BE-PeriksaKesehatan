@@ -6,9 +6,9 @@ import (
 	"BE-PeriksaKesehatan/internal/model/entity"
 	"BE-PeriksaKesehatan/internal/repository"
 	"errors"
-	"time"
 
 	"BE-PeriksaKesehatan/pkg/utils"
+	timezoneUtils "BE-PeriksaKesehatan/pkg/utils"
 )
 
 // HealthDataService menangani business logic untuk data kesehatan
@@ -26,8 +26,8 @@ func NewHealthDataService(healthDataRepo *repository.HealthDataRepository, perso
 }
 
 func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDataRequest) (*response.HealthDataResponse, error) {
-	// Ambil CURRENT_DATE (hari ini)
-	currentDate := time.Now()
+	// Ambil CURRENT_DATE (hari ini) dalam timezone Asia/Jakarta
+	currentDate := timezoneUtils.NowInJakarta()
 	
 	// Cari record dengan record_date = hari ini
 	existingData, err := s.healthDataRepo.GetHealthDataByUserIDAndDate(userID, currentDate)
@@ -65,8 +65,8 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 		// User boleh mengirim 1 field saja atau bahkan kosong (semua NULL)
 
 		// Set record_date = hari ini
-		// Set expired_at = hari ini 23:59:59
-		expiredAt := time.Date(currentDate.Year(), currentDate.Month(), currentDate.Day(), 23, 59, 59, 0, currentDate.Location())
+		// Set expired_at = hari ini 23:59:59 (dalam timezone Asia/Jakarta)
+		expiredAt := timezoneUtils.DateInJakarta(currentDate.Year(), currentDate.Month(), currentDate.Day(), 23, 59, 59, 0)
 
 		healthData = &entity.HealthData{
 			UserID:     userID,
@@ -86,7 +86,7 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 	resp := &response.HealthDataResponse{
 		ID:        healthData.ID,
 		UserID:    healthData.UserID,
-		CreatedAt: healthData.CreatedAt,
+		CreatedAt: timezoneUtils.ToJakarta(healthData.CreatedAt),
 	}
 
 	// Set semua field (termasuk yang nil) untuk response
@@ -104,7 +104,7 @@ func (s *HealthDataService) CreateHealthData(userID uint, req *request.HealthDat
 // GetHealthDataByUserID mengembalikan 1 record health data untuk hari ini milik user
 // Menggunakan daily record system: mengembalikan record dengan record_date = CURRENT_DATE
 func (s *HealthDataService) GetHealthDataByUserID(userID uint) (*entity.HealthData, error) {
-	currentDate := time.Now()
+	currentDate := timezoneUtils.NowInJakarta()
 	return s.healthDataRepo.GetHealthDataByUserIDAndDate(userID, currentDate)
 }
 

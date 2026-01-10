@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 const (
@@ -105,7 +104,7 @@ func UploadProfileImage(fileHeader *multipart.FileHeader, userID uint) (string, 
 		}
 	}
 	
-	timestamp := time.Now().Unix()
+	timestamp := NowInJakarta().Unix()
 	filename := fmt.Sprintf("%d_%d%s", userID, timestamp, ext)
 	// Gunakan filepath.Join untuk mencegah path traversal
 	destPath := filepath.Join(UploadDir, filename)

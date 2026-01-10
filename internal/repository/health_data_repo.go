@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	timezoneUtils "BE-PeriksaKesehatan/pkg/utils"
 )
 
 type HealthDataRepository struct {
@@ -58,9 +59,11 @@ func (r *HealthDataRepository) GetAllHealthData() ([]entity.HealthData, error) {
 
 func (r *HealthDataRepository) GetHealthDataByUserIDWithFilter(userID uint, startDate, endDate time.Time) ([]entity.HealthData, error) {
 	var healthDataList []entity.HealthData
-	// Normalisasi startDate dan endDate ke awal hari untuk perbandingan
-	startDateNormalized := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, startDate.Location())
-	endDateNormalized := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 0, 0, 0, 0, endDate.Location())
+	// Normalisasi startDate dan endDate ke awal hari untuk perbandingan (dalam timezone Asia/Jakarta)
+	startDateJakarta := timezoneUtils.ToJakarta(startDate)
+	endDateJakarta := timezoneUtils.ToJakarta(endDate)
+	startDateNormalized := timezoneUtils.DateInJakarta(startDateJakarta.Year(), startDateJakarta.Month(), startDateJakarta.Day(), 0, 0, 0, 0)
+	endDateNormalized := timezoneUtils.DateInJakarta(endDateJakarta.Year(), endDateJakarta.Month(), endDateJakarta.Day(), 0, 0, 0, 0)
 	
 	// Format tanggal sebagai string untuk perbandingan yang lebih reliable
 	startDateStr := startDateNormalized.Format("2006-01-02")

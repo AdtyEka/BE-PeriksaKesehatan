@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	timezoneUtils "BE-PeriksaKesehatan/pkg/utils"
 )
 
 // MapHealthHistoryToAPIResponse mengubah HealthHistoryResponse internal ke struktur API response baru
@@ -24,8 +26,8 @@ func (s *HealthDataService) MapHealthHistoryToAPIResponse(
 	}
 
 	// Ambil data untuk semua periode menggunakan query yang sudah ada
-	now := time.Now()
-	endDateGlobal := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+	now := timezoneUtils.NowInJakarta()
+	endDateGlobal := timezoneUtils.DateInJakarta(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0)
 	
 	// Data untuk 7Days (7 hari terakhir)
 	startDate7Days := endDateGlobal.AddDate(0, 0, -6)
